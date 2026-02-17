@@ -61,11 +61,17 @@ async function pollForResult(
           const data = line.slice(6)
           console.log(`📦 Data line:`, data.substring(0, 200))
           
+          // Handle null data
+          if (data === 'null' || data.trim() === '') {
+            console.warn('⚠️ Received null or empty data, skipping...')
+            continue
+          }
+          
           try {
             const parsed = JSON.parse(data)
 
             // Handle both event-wrapped and direct data responses
-            if (parsed.event) {
+            if (parsed && typeof parsed === 'object' && 'event' in parsed) {
               console.log(`📡 Event: ${parsed.event}`, parsed.data)
               
               if (onProgress) {
@@ -76,8 +82,9 @@ async function pollForResult(
                 console.log('✅ Complete!')
                 return parsed.data
               } else if (parsed.event === 'error') {
-                console.error('❌ Error event:', parsed.data)
-                throw new Error(parsed.data || 'API error occurred')
+                const errorMsg = parsed.data || 'API error occurred (no details provided)'
+                console.error('❌ Error event:', errorMsg)
+                throw new Error(String(errorMsg))
               } else if (parsed.event === 'generating' || parsed.event === 'progress') {
                 console.log(`🎵 Progress: ${JSON.stringify(parsed.data).substring(0, 100)}...`)
                 if (onProgress) {
@@ -104,6 +111,9 @@ async function pollForResult(
               throw new Error(`API Error: ${data.substring(0, 200)}`)
             }
           }
+        } else if (line.startsWith('event: error')) {
+          console.error('❌ Error event detected in line:', line)
+          throw new Error('API returned an error event without details')
         }
       }
 
@@ -129,7 +139,7 @@ export async function callGradioAPI(
   endpoint: string,
   data: any[] = [],
   onProgress?: (event: GradioEvent) => void,
-  useDirectAPI: boolean = false // NEW: bypass proxy for long-running calls
+  useDirectAPI: boolean = false
 ): Promise<any> {
   try {
     const apiBase = useDirectAPI ? API_CONFIG.directBase : getAPIBase()
@@ -218,7 +228,6 @@ export const modelAPI = {
 // Generation APIs
 export const generationAPI = {
   // Simple mode generation - generates METADATA only (fast)
-  // NOTE: Using direct API to avoid proxy issues
   generateSimple: async (
     description: string,
     instrumental: boolean,
@@ -234,17 +243,13 @@ export const generationAPI = {
       'lambda_12',
       [description, instrumental, vocalLanguage, temperature, topK, topP, thinking],
       onProgress,
-      true // Use direct API to avoid proxy issues
+      true
     )
 
-    // lambda_12 returns 11+ elements:
-    // [0] prompt, [1] lyrics, [2] bpm, [3] duration, [4] key, 
-    // [5] vocalOut, [6] vocalOpt, [7] timeSig, [8] instrumental, 
-    // [9] thinking, [10] status
     const prompt = metadata[0] || ''
     const lyrics = metadata[1] || ''
     const bpm = metadata[2] || 120
-    const duration = Math.min(metadata[3] || 15, 30) // Cap at 30s for faster generation
+    const duration = Math.min(metadata[3] || 15, 30)
     const key = metadata[4] || ''
     const vocalOut = metadata[5] || 'unknown'
     const vocalOpt = metadata[6] || 'unknown'
@@ -266,7 +271,7 @@ export const generationAPI = {
       prompt,
       lyrics,
       bpm,
-      duration, // Use capped duration
+      duration,
       key,
       timeSig,
       instrumental: isInstrumental,
@@ -275,114 +280,7 @@ export const generationAPI = {
     }
   },
 
-  // Generate actual audio files from metadata (lambda_13)
-  // This is the MAIN generation endpoint that produces audio files
-  generateAudio: async (
-    prompt: string,
-    lyrics: string,
-    bpm: number,
-    keySignature: string,
-    vocalLanguage: string,
-    timeSignature: string,
-    duration: number,
-    batchSize: number,
-    thinking: boolean,
-    audioDuration: number,
-    srcAudio: any,
-    startTime: number,
-    numSegments: number,
-    refAudio: any,
-    contextPrompt: string,
-    contextStart: number,
-    contextDuration: number,
-    maskPrompt: string,
-    maskStart: number,
-    mode: string,
-    useHybridCFG: boolean,
-    cfgScale: number,
-    ditSteps: number,
-    inferenceMethod: string,
-    customTimesteps: string,
-    audioFormat: string,
-    temperature: number,
-    thinking2: boolean,
-    lmCfgScale: number,
-    topK: number,
-    topP: number,
-    negativePrompt: string,
-    useAudioLoRA: boolean,
-    useTextLoRA: boolean,
-    useAudioLM: boolean,
-    thinking3: boolean,
-    genScores: boolean,
-    genLyrics: boolean,
-    genNextBatch: boolean,
-    qualityScore: number,
-    randomSegments: number,
-    maskInstrument: string,
-    maskInstruments: any,
-    onProgress?: (event: GradioEvent) => void
-  ) => {
-    console.log('🎼 Generating audio with lambda_13...')
-    console.log(`⏱️ Expected duration: ~${Math.round(duration * 0.15)} minutes for ${duration}s of audio`)
-    console.log('📋 Parameters:', { prompt: prompt.substring(0, 50), bpm, duration, batchSize })
-    
-    const result = await callGradioAPI(
-      'lambda_13',
-      [
-        prompt,
-        lyrics,
-        bpm,
-        keySignature,
-        vocalLanguage,
-        timeSignature,
-        duration,
-        batchSize,
-        thinking,
-        audioDuration,
-        srcAudio,
-        startTime,
-        numSegments,
-        refAudio,
-        contextPrompt,
-        contextStart,
-        contextDuration,
-        maskPrompt,
-        maskStart,
-        mode,
-        useHybridCFG,
-        cfgScale,
-        ditSteps,
-        inferenceMethod,
-        customTimesteps,
-        audioFormat,
-        temperature,
-        thinking2,
-        lmCfgScale,
-        topK,
-        topP,
-        negativePrompt,
-        useAudioLoRA,
-        useTextLoRA,
-        useAudioLM,
-        thinking3,
-        genScores,
-        genLyrics,
-        genNextBatch,
-        qualityScore,
-        randomSegments,
-        maskInstrument,
-        maskInstruments,
-      ],
-      onProgress,
-      true // Use direct API for long audio generation
-    )
-
-    console.log('✅ Audio generation complete:', result)
-    return result
-  },
-
-  // Simplified audio generation wrapper with sensible defaults
+  // Simplified audio generation - ONLY ESSENTIAL PARAMETERS
   generateAudioSimple: async (
     prompt: string,
     lyrics: string,
@@ -393,52 +291,71 @@ export const generationAPI = {
     duration: number,
     onProgress?: (event: GradioEvent) => void
   ) => {
-    return generationAPI.generateAudio(
-      prompt,
-      lyrics,
-      bpm,
+    console.log('🎼 Generating audio with lambda_13...')
+    console.log(`⏱️ Expected duration: ~${Math.round(duration * 0.15)} minutes for ${duration}s of audio`)
+    console.log('📋 Parameters:', { 
+      prompt: prompt.substring(0, 50), 
+      bpm, 
       keySignature,
       vocalLanguage,
       timeSignature,
-      duration,
-      2, // batchSize (generate 2 variations)
-      false, // thinking
-      duration, // audioDuration (same as duration)
-      null, // srcAudio
-      0, // startTime
-      1, // numSegments
-      null, // refAudio
-      '', // contextPrompt
-      0, // contextStart
-      10, // contextDuration
-      '', // maskPrompt
-      0, // maskStart
-      'text2music', // mode
-      true, // useHybridCFG
-      3.0, // cfgScale
-      8, // ditSteps (turbo default)
-      'single_step', // inferenceMethod
-      '', // customTimesteps
-      'flac', // audioFormat
-      0.85, // temperature
-      false, // thinking2
-      1.5, // lmCfgScale
-      0, // topK
-      0.9, // topP
-      '', // negativePrompt
-      false, // useAudioLoRA
-      false, // useTextLoRA
-      true, // useAudioLM
-      false, // thinking3
-      false, // genScores
-      true, // genLyrics
-      false, // genNextBatch
-      0, // qualityScore
-      0, // randomSegments
-      '', // maskInstrument
-      [], // maskInstruments
-      onProgress
+      duration 
+    })
+    
+    // Match the exact order and types from HuggingFace documentation
+    const result = await callGradioAPI(
+      'lambda_13',
+      [
+        prompt,                    // 0: prompt (string)
+        lyrics,                    // 1: lyrics (string)
+        bpm,                       // 2: bpm (number)
+        keySignature,              // 3: key_signature (string)
+        vocalLanguage,             // 4: vocal_language (string)
+        timeSignature,             // 5: time_signature (string)
+        duration,                  // 6: duration (number)
+        1,                         // 7: batch_size (1 for faster generation)
+        false,                     // 8: thinking (boolean)
+        duration,                  // 9: audio_duration (number)
+        null,                      // 10: src_audio (null)
+        0,                         // 11: start_time (number)
+        1,                         // 12: num_segments (number)
+        null,                      // 13: ref_audio (null)
+        '',                        // 14: context_prompt (string)
+        0,                         // 15: context_start (number)
+        10,                        // 16: context_duration (number)
+        '',                        // 17: mask_prompt (string)
+        0,                         // 18: mask_start (number)
+        'text2music',              // 19: mode (string)
+        true,                      // 20: use_hybrid_cfg (boolean)
+        3.0,                       // 21: cfg_scale (number)
+        8,                         // 22: dit_steps (number)
+        'single_step',             // 23: inference_method (string)
+        '',                        // 24: custom_timesteps (string)
+        'flac',                    // 25: audio_format (string)
+        0.85,                      // 26: temperature (number)
+        false,                     // 27: thinking2 (boolean)
+        1.5,                       // 28: lm_cfg_scale (number)
+        0,                         // 29: top_k (number)
+        0.9,                       // 30: top_p (number)
+        '',                        // 31: negative_prompt (string)
+        false,                     // 32: use_audio_lora (boolean)
+        false,                     // 33: use_text_lora (boolean)
+        true,                      // 34: use_audio_lm (boolean)
+        false,                     // 35: thinking3 (boolean)
+        false,                     // 36: gen_scores (boolean)
+        true,                      // 37: gen_lyrics (boolean)
+        false,                     // 38: gen_next_batch (boolean)
+        0,                         // 39: quality_score (number)
+        0,                         // 40: random_segments (number)
+        '',                        // 41: mask_instrument (string)
+        [],                        // 42: mask_instruments (array)
+      ],
+      onProgress,
+      true
     )
+
+    console.log('✅ Audio generation complete:', result)
+    return result
   },
 
   // Custom mode generation
