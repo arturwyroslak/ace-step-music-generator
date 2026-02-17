@@ -6,6 +6,7 @@ import { ModelConfig } from '@/components/model/ModelConfig'
 import { GenerationPanel } from '@/components/generation/GenerationPanel'
 import { DatasetManager } from '@/components/dataset/DatasetManager'
 import { TrainingPanel } from '@/components/training/TrainingPanel'
+import { ApiModeToggle } from '@/components/ApiModeToggle'
 import { Music, Settings, Database, GraduationCap } from 'lucide-react'
 
 export default function Home() {
@@ -21,6 +22,10 @@ export default function Home() {
           <p className="text-muted-foreground">
             AI-powered music generation with advanced controls
           </p>
+        </div>
+
+        <div className="mb-6">
+          <ApiModeToggle />
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">

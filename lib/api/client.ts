@@ -1,7 +1,5 @@
-// ACE-STEP API Client with polling fallback
-// Handles all 99 API endpoints with proper typing and event streaming
-
-const API_BASE = '/api/gradio' // Use Next.js API route as proxy
+// ACE-STEP API Client with dual mode support
+import { API_CONFIG, getAPIBase } from './config'
 
 export interface GradioEventData {
   data: any[]
@@ -12,33 +10,48 @@ export interface GradioEvent {
   data?: any
 }
 
-// Polling-based API call (fallback for CORS issues)
+// Polling-based API call
 async function pollForResult(
   endpoint: string,
   eventId: string,
   onProgress?: (event: GradioEvent) => void
 ): Promise<any> {
-  const maxAttempts = 600 // 5 minutes with 500ms intervals
+  const maxAttempts = API_CONFIG.maxPollAttempts
   let attempts = 0
+  const apiBase = getAPIBase()
 
   while (attempts < maxAttempts) {
     try {
-      const response = await fetch(`${API_BASE}/status/${endpoint}/${eventId}`, {
+      const url = API_CONFIG.useProxy
+        ? `${apiBase}/status/${endpoint}/${eventId}`
+        : `${apiBase}/call/${endpoint}/${eventId}`
+
+      const response = await fetch(url, {
         method: 'GET',
+        headers: API_CONFIG.useProxy ? {} : {
+          'Accept': 'text/event-stream',
+        },
       })
 
       if (!response.ok) {
-        throw new Error(`Polling failed: ${response.statusText}`)
+        if (attempts >= maxAttempts - 1) {
+          throw new Error(`Polling failed: ${response.statusText}`)
+        }
+        await new Promise(resolve => setTimeout(resolve, API_CONFIG.pollInterval))
+        attempts++
+        continue
       }
 
       const events = await response.text()
       const lines = events.split('\n').filter(line => line.trim())
 
+      let hasUpdate = false
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6)
           try {
             const parsed = JSON.parse(data) as GradioEvent
+            hasUpdate = true
 
             if (onProgress) {
               onProgress(parsed)
@@ -48,39 +61,49 @@ async function pollForResult(
               return parsed.data
             } else if (parsed.event === 'error') {
               throw new Error(parsed.data || 'API error occurred')
+            } else if (parsed.event === 'heartbeat') {
+              // Continue polling
             }
           } catch (e) {
             // Ignore parse errors for non-JSON lines
+            if (data.includes('error') || data.includes('Error')) {
+              throw new Error(data)
+            }
           }
         }
       }
 
       // Wait before next poll
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise(resolve => setTimeout(resolve, API_CONFIG.pollInterval))
       attempts++
     } catch (error) {
       if (attempts >= maxAttempts - 1) {
         throw error
       }
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise(resolve => setTimeout(resolve, API_CONFIG.pollInterval))
       attempts++
     }
   }
 
-  throw new Error('Polling timeout')
+  throw new Error('Request timeout: No response from API after ' + (API_CONFIG.maxPollAttempts * API_CONFIG.pollInterval / 1000) + ' seconds')
 }
 
-// Generic API call handler with polling
+// Generic API call handler
 export async function callGradioAPI(
   endpoint: string,
   data: any[] = [],
   onProgress?: (event: GradioEvent) => void
 ): Promise<any> {
   try {
-    console.log(`API call started: ${endpoint}`, data)
+    const apiBase = getAPIBase()
+    const callUrl = API_CONFIG.useProxy
+      ? `${apiBase}/call/${endpoint}`
+      : `${apiBase}/call/${endpoint}`
+
+    console.log(`🚀 API call: ${endpoint}`, { useProxy: API_CONFIG.useProxy, data })
 
     // POST request to initiate the call
-    const postResponse = await fetch(`${API_BASE}/call/${endpoint}`, {
+    const postResponse = await fetch(callUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data }),
@@ -98,12 +121,14 @@ export async function callGradioAPI(
       throw new Error('No event_id received from API')
     }
 
-    console.log(`API call started: ${endpoint}, event_id: ${eventId}`)
+    console.log(`✅ Event ID: ${eventId}`)
 
-    // Use polling to get results
-    return await pollForResult(endpoint, eventId, onProgress)
+    // Poll for results
+    const result = await pollForResult(endpoint, eventId, onProgress)
+    console.log(`✅ API call complete: ${endpoint}`)
+    return result
   } catch (error) {
-    console.error('API call failed:', error)
+    console.error(`❌ API call failed: ${endpoint}`, error)
     throw error
   }
 }

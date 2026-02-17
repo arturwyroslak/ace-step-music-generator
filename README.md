@@ -20,8 +20,9 @@ Complete production-ready web interface for the ACE-STEP AI Music Generation API
 ### 🔧 Technical Features
 - **Dataset Tools**: Import, label, and preprocess training data
 - **LoRA Training**: Fine-tune models with custom datasets
-- **Real-time Progress**: Live status updates and event streaming
+- **Real-time Progress**: Live status updates with polling
 - **Audio Export**: Download generations with metadata
+- **Dual API Mode**: Proxy or direct connection
 
 ## Tech Stack
 
@@ -29,11 +30,15 @@ Complete production-ready web interface for the ACE-STEP AI Music Generation API
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS + shadcn/ui
 - **State**: Zustand
-- **API**: Gradio streaming events
+- **API**: Gradio with polling fallback
 
 ## Installation
 
 ```bash
+# Clone repository
+git clone https://github.com/arturwyroslak/ace-step-music-generator.git
+cd ace-step-music-generator
+
 # Install dependencies
 npm install
 
@@ -47,37 +52,81 @@ npm start
 
 ## Configuration
 
-API endpoint is configured in `lib/api/client.ts`:
+### API Mode
+
+The app supports two connection modes:
+
+1. **Proxy Mode (Default)**: Routes API calls through Next.js API routes
+   - ✅ Avoids CORS issues
+   - ✅ Better error handling
+   - ⚠️ Requires server deployment
+
+2. **Direct Mode**: Direct browser-to-API calls
+   - ✅ Works without server
+   - ⚠️ May encounter CORS issues
+   - ⚠️ EventSource not supported
+
+Switch modes in `lib/api/config.ts`:
 
 ```typescript
-const API_BASE = 'https://ace-step-ace-step-v1-5.hf.space/gradio_api'
+export const API_CONFIG = {
+  useProxy: true, // Set to false for direct mode
+  // ...
+}
 ```
+
+Or use the UI toggle in the app interface.
 
 ## Usage
 
-1. **Initialize Model**: Configure and load the ACE-STEP model
-2. **Choose Generation Mode**: Select Simple, Custom, Cover, or Repaint
-3. **Set Parameters**: Adjust inference steps, CFG, temperature, etc.
-4. **Generate**: Click generate and wait for streaming results
-5. **Export**: Download audio files with metadata
+### Quick Start
+
+1. **Choose API Mode**: Select Proxy or Direct mode based on your setup
+2. **Initialize Model**: Go to Model tab and initialize ACE-STEP
+3. **Generate Music**: 
+   - Simple Mode: Enter description and generate
+   - Custom Mode: Set detailed parameters
+4. **Download**: Save generated audio files
+
+### Advanced Workflows
+
+#### LoRA Training
+
+1. Prepare dataset of audio files
+2. Use Dataset tab to preprocess
+3. Configure training parameters
+4. Start training and monitor progress
+5. Load trained LoRA in Model tab
+
+#### Custom Generation
+
+1. Set prompt, lyrics, BPM, key
+2. Adjust temperature, CFG scale
+3. Enable/disable 5Hz LM
+4. Generate with thinking mode
 
 ## Project Structure
 
 ```
-├── app/                    # Next.js app router
-│   ├── page.tsx           # Main application
-│   └── layout.tsx         # Root layout
+ace-step-music-generator/
+├── app/
+│   ├── api/gradio/          # API proxy routes
+│   ├── page.tsx             # Main app
+│   └── layout.tsx           # Root layout
 ├── components/
-│   ├── ui/                # shadcn/ui components
-│   ├── generation/        # Music generation UI
-│   ├── model/             # Model configuration UI
-│   ├── dataset/           # Dataset management UI
-│   └── training/          # LoRA training UI
+│   ├── ui/                  # shadcn/ui components
+│   ├── generation/          # GenerationPanel
+│   ├── model/               # ModelConfig
+│   ├── dataset/             # DatasetManager
+│   ├── training/            # TrainingPanel
+│   └── ApiModeToggle.tsx    # Connection mode toggle
 ├── lib/
-│   ├── api/               # API client and types
-│   ├── store/             # Zustand state management
-│   └── utils.ts           # Utilities
-└── types/                 # TypeScript definitions
+│   ├── api/
+│   │   ├── client.ts        # API client
+│   │   └── config.ts        # API configuration
+│   ├── store/               # Zustand stores
+│   └── utils.ts             # Utilities
+└── types/                   # TypeScript definitions
 ```
 
 ## API Endpoints Coverage
@@ -112,15 +161,69 @@ const API_BASE = 'https://ace-step-ace-step-v1-5.hf.space/gradio_api'
 - State synchronization
 - Example loading
 
+## Troubleshooting
+
+### CORS Errors
+
+**Solution 1**: Use Proxy Mode (recommended)
+```typescript
+API_CONFIG.useProxy = true
+```
+
+**Solution 2**: Deploy to server with API routes
+```bash
+npm run build
+npm start
+```
+
+**Solution 3**: Use Direct Mode with CORS extension (development only)
+
+### Connection Timeout
+
+Increase timeout in `lib/api/config.ts`:
+```typescript
+maxPollAttempts: 1200 // 10 minutes
+```
+
+### API Not Responding
+
+Check:
+1. Gradio Space is running: https://ace-step-ace-step-v1-5.hf.space/
+2. Network connection
+3. Browser console for errors
+
 ## Development
 
 Built with enterprise-grade architecture:
 
-- Type-safe API client with full endpoint coverage
-- Modular component design for maintainability
-- Real-time event streaming with proper error handling
-- Responsive UI with dark mode support
-- Optimized performance with React Server Components
+- ✅ Type-safe API client with full endpoint coverage
+- ✅ Modular component design for maintainability
+- ✅ Polling-based requests with proper error handling
+- ✅ Responsive UI with dark mode support
+- ✅ Optimized performance with React Server Components
+- ✅ Dual connection mode for flexibility
+
+## Deployment
+
+### Vercel (Recommended)
+
+```bash
+vercel deploy
+```
+
+### Docker
+
+```bash
+docker build -t ace-step-generator .
+docker run -p 3000:3000 ace-step-generator
+```
+
+### Self-hosted
+
+```bash
+npm run build
+npm start
+```
 
 ## License
 
@@ -129,3 +232,9 @@ MIT
 ## Credits
 
 Interface for [ACE-STEP](https://huggingface.co/spaces/ace-step/ace-step-v1-5) AI Music Generation model.
+
+## Support
+
+For issues and questions:
+- GitHub Issues: https://github.com/arturwyroslak/ace-step-music-generator/issues
+- Hugging Face Space: https://huggingface.co/spaces/ace-step/ace-step-v1-5
