@@ -38,6 +38,8 @@ async function pollForResult(
         },
       })
 
+      console.log(`📊 Response status: ${response.status} ${response.statusText}`)
+
       if (!response.ok) {
         console.warn(`⚠️ Poll failed: ${response.statusText}`)
         if (attempts >= maxAttempts - 1) {
@@ -49,19 +51,22 @@ async function pollForResult(
       }
 
       const events = await response.text()
+      console.log(`📥 Received ${events.length} bytes, ${events.split('\n').length} lines`)
+      console.log(`📝 Raw response preview:`, events.substring(0, 500))
+      
       const lines = events.split('\n').filter(line => line.trim())
-
-      console.log(`📥 Received ${lines.length} lines`)
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6)
+          console.log(`📦 Data line:`, data.substring(0, 200))
+          
           try {
             const parsed = JSON.parse(data)
 
             // Handle both event-wrapped and direct data responses
             if (parsed.event) {
-              console.log(`📡 Event: ${parsed.event}`)
+              console.log(`📡 Event: ${parsed.event}`, parsed.data)
               
               if (onProgress) {
                 onProgress(parsed)
@@ -78,6 +83,8 @@ async function pollForResult(
                 if (onProgress) {
                   onProgress({ event: parsed.event, data: parsed.data })
                 }
+              } else if (parsed.event === 'heartbeat') {
+                console.log('💓 Heartbeat received')
               }
             } else if (Array.isArray(parsed)) {
               // Direct array response
@@ -90,6 +97,7 @@ async function pollForResult(
               console.log('🤔 Unknown format:', JSON.stringify(parsed).substring(0, 100))
             }
           } catch (e) {
+            console.warn('⚠️ Parse error:', e, 'Data:', data.substring(0, 100))
             // Ignore parse errors for non-JSON lines
             if (data.includes('error') || data.includes('Error') || data.includes('Traceback')) {
               console.error('❌ API Error:', data)
@@ -100,6 +108,7 @@ async function pollForResult(
       }
 
       // Wait before next poll
+      console.log(`⏳ Waiting ${API_CONFIG.pollInterval}ms before next poll...`)
       await new Promise(resolve => setTimeout(resolve, API_CONFIG.pollInterval))
       attempts++
     } catch (error) {
@@ -228,14 +237,14 @@ export const generationAPI = {
       true // Use direct API to avoid proxy issues
     )
 
-    // lambda_12 returns 11 elements:
+    // lambda_12 returns 11+ elements:
     // [0] prompt, [1] lyrics, [2] bpm, [3] duration, [4] key, 
     // [5] vocalOut, [6] vocalOpt, [7] timeSig, [8] instrumental, 
     // [9] thinking, [10] status
     const prompt = metadata[0] || ''
     const lyrics = metadata[1] || ''
-    const bpm = metadata[2] || 0
-    const duration = metadata[3] || 15
+    const bpm = metadata[2] || 120
+    const duration = Math.min(metadata[3] || 15, 30) // Cap at 30s for faster generation
     const key = metadata[4] || ''
     const vocalOut = metadata[5] || 'unknown'
     const vocalOpt = metadata[6] || 'unknown'
@@ -247,7 +256,7 @@ export const generationAPI = {
       prompt: prompt.substring(0, 50) + '...', 
       lyrics: lyrics ? lyrics.substring(0, 100) + '...' : '[Instrumental]', 
       bpm, 
-      duration, 
+      duration: `${duration}s (capped from ${metadata[3]}s)`,
       key,
       timeSig 
     })
@@ -257,7 +266,7 @@ export const generationAPI = {
       prompt,
       lyrics,
       bpm,
-      duration,
+      duration, // Use capped duration
       key,
       timeSig,
       instrumental: isInstrumental,
@@ -316,6 +325,7 @@ export const generationAPI = {
   ) => {
     console.log('🎼 Generating audio with lambda_13...')
     console.log(`⏱️ Expected duration: ~${Math.round(duration * 0.15)} minutes for ${duration}s of audio`)
+    console.log('📋 Parameters:', { prompt: prompt.substring(0, 50), bpm, duration, batchSize })
     
     const result = await callGradioAPI(
       'lambda_13',
