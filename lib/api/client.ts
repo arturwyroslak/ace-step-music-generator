@@ -45,28 +45,38 @@ async function pollForResult(
       const events = await response.text()
       const lines = events.split('\n').filter(line => line.trim())
 
-      let hasUpdate = false
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6)
           try {
             const parsed = JSON.parse(data) as GradioEvent
-            hasUpdate = true
+
+            console.log('📥 Event:', parsed.event, parsed)
 
             if (onProgress) {
               onProgress(parsed)
             }
 
             if (parsed.event === 'complete') {
+              console.log('✅ Complete event data:', parsed.data)
               return parsed.data
             } else if (parsed.event === 'error') {
               throw new Error(parsed.data || 'API error occurred')
-            } else if (parsed.event === 'heartbeat') {
-              // Continue polling
+            } else if (parsed.event === 'generating') {
+              // Update progress
+              if (onProgress) {
+                onProgress({ event: 'generating', data: parsed.data })
+              }
+            } else if (parsed.event === 'progress') {
+              // Progress update
+              if (onProgress) {
+                onProgress({ event: 'progress', data: parsed.data })
+              }
             }
           } catch (e) {
             // Ignore parse errors for non-JSON lines
             if (data.includes('error') || data.includes('Error')) {
+              console.error('Parse error:', data)
               throw new Error(data)
             }
           }
@@ -77,6 +87,7 @@ async function pollForResult(
       await new Promise(resolve => setTimeout(resolve, API_CONFIG.pollInterval))
       attempts++
     } catch (error) {
+      console.error('Poll error:', error)
       if (attempts >= maxAttempts - 1) {
         throw error
       }
@@ -125,7 +136,7 @@ export async function callGradioAPI(
 
     // Poll for results
     const result = await pollForResult(endpoint, eventId, onProgress)
-    console.log(`✅ API call complete: ${endpoint}`)
+    console.log(`✅ API call complete: ${endpoint}`, result)
     return result
   } catch (error) {
     console.error(`❌ API call failed: ${endpoint}`, error)
@@ -165,6 +176,18 @@ export const modelAPI = {
 // Generation APIs
 export const generationAPI = {
   // Simple mode generation
+  // Returns 11 elements according to API docs:
+  // 0: Prompt
+  // 1: Lyrics
+  // 2: BPM
+  // 3: Duration
+  // 4: Key Signature
+  // 5: Vocal Language (output)
+  // 6: Vocal Language (optional)
+  // 7: Time Signature
+  // 8: Instrumental checkbox
+  // 9: Thinking checkbox
+  // 10: Generation Status
   generateSimple: (
     description: string,
     instrumental: boolean,
@@ -181,6 +204,8 @@ export const generationAPI = {
   ),
 
   // Custom mode generation
+  // Returns 8 elements:
+  // 0: Prompt, 1: Lyrics, 2: BPM, 3: Duration, 4: Key, 5: Vocal Lang, 6: Time Sig, 7: Status
   generateCustom: (
     prompt: string,
     lyrics: string,
@@ -207,6 +232,7 @@ export const generationAPI = {
   ) => callGradioAPI('lambda_9', [audioCodes, thinking], onProgress),
 
   // Load random example
+  // Returns 3 elements: [description, instrumental, vocalLanguage]
   loadRandomExample: () => callGradioAPI('load_random_simple_description'),
 }
 

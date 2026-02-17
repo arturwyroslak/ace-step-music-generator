@@ -16,7 +16,6 @@ import { Progress } from '@/components/ui/progress'
 import { useGenerationStore } from '@/lib/store/generation'
 import { generationAPI, GradioEvent } from '@/lib/api/client'
 import { Download, Loader2, Music, Sparkles, Shuffle, Clock, CheckCircle2 } from 'lucide-react'
-import { parseAudioURL } from '@/lib/utils'
 
 interface ProgressState {
   stage: string
@@ -28,7 +27,6 @@ interface ProgressState {
 export function GenerationPanel() {
   const [generationMode, setGenerationMode] = useState<'simple' | 'custom'>('simple')
   const store = useGenerationStore()
-  const [audioResults, setAudioResults] = useState<string[]>([])
   const [progressState, setProgressState] = useState<ProgressState>({
     stage: 'idle',
     progress: 0,
@@ -36,25 +34,31 @@ export function GenerationPanel() {
   })
 
   const updateProgress = (event: GradioEvent) => {
+    console.log('Progress event:', event)
+    
     if (event.event === 'generating') {
       setProgressState({
         stage: 'generating',
         progress: 30,
         message: 'Generating music...',
-        details: 'Processing your request',
+        details: 'AI is creating your music',
       })
     } else if (event.event === 'progress') {
-      const progress = event.data?.progress || 50
+      const progressData = event.data
+      const progressValue = progressData?.progress_data?.[0] || progressData?.progress || 50
+      const progressMax = progressData?.progress_data?.[1] || 100
+      const percentage = Math.min((progressValue / progressMax) * 100, 90)
+      
       setProgressState({
         stage: 'processing',
-        progress: Math.min(progress, 90),
+        progress: percentage,
         message: 'Processing audio...',
-        details: event.data?.message || 'Creating your music',
+        details: progressData?.desc || 'Creating your music',
       })
     } else if (event.event === 'heartbeat') {
       setProgressState(prev => ({
         ...prev,
-        progress: Math.min(prev.progress + 2, 95),
+        progress: Math.min(prev.progress + 1, 95),
         details: 'Still working...',
       }))
     }
@@ -68,7 +72,6 @@ export function GenerationPanel() {
 
     store.setIsGenerating(true)
     store.clearGeneratedAudios()
-    setAudioResults([])
     setProgressState({
       stage: 'starting',
       progress: 10,
@@ -88,6 +91,8 @@ export function GenerationPanel() {
         updateProgress
       )
 
+      console.log('Generation result:', result)
+
       setProgressState({
         stage: 'complete',
         progress: 100,
@@ -95,18 +100,23 @@ export function GenerationPanel() {
         details: 'Music created successfully',
       })
 
-      // Parse result
+      // Parse result according to API documentation
+      // lambda_12 returns 11 elements:
+      // 0: Prompt, 1: Lyrics, 2: BPM, 3: Duration, 4: Key, 5: Vocal Lang (out), 
+      // 6: Vocal Lang (opt), 7: Time Sig, 8: Instrumental, 9: Thinking, 10: Status
       if (result && Array.isArray(result)) {
-        const [prompt, lyrics, bpm, duration, key, vocal, timeSig, ...rest] = result
+        const [prompt, lyrics, bpm, duration, key, vocalOut, vocalOpt, timeSig, instrumental, thinking, status] = result
+        
         store.setPrompt(prompt || '')
         store.setLyrics(lyrics || '')
         store.setBPM(bpm || 0)
         store.setDuration(duration || 0)
         store.setKeySignature(key || '')
         store.setTimeSignature(timeSig || '')
+        store.setGenerationStatus(status || '✅ Generation complete!')
+        
+        console.log('Parsed:', { prompt, lyrics, bpm, duration, key, vocalOut, timeSig, status })
       }
-
-      store.setGenerationStatus('✅ Generation complete!')
     } catch (error) {
       console.error('Generation failed:', error)
       setProgressState({
@@ -129,7 +139,6 @@ export function GenerationPanel() {
 
     store.setIsGenerating(true)
     store.clearGeneratedAudios()
-    setAudioResults([])
     setProgressState({
       stage: 'starting',
       progress: 10,
@@ -152,6 +161,8 @@ export function GenerationPanel() {
         updateProgress
       )
 
+      console.log('Custom generation result:', result)
+
       setProgressState({
         stage: 'complete',
         progress: 100,
@@ -159,9 +170,19 @@ export function GenerationPanel() {
         details: 'Music created successfully',
       })
 
+      // lambda_10 returns 8 elements
       if (result && Array.isArray(result)) {
-        const [updatedPrompt, updatedLyrics, updatedBpm, updatedDuration, updatedKey, updatedVocal, updatedTimeSig, status] = result
+        const [prompt, lyrics, bpm, duration, key, vocalLang, timeSig, status] = result
+        
+        store.setPrompt(prompt || '')
+        store.setLyrics(lyrics || '')
+        store.setBPM(bpm || 0)
+        store.setDuration(duration || 0)
+        store.setKeySignature(key || '')
+        store.setTimeSignature(timeSig || '')
         store.setGenerationStatus(status || '✅ Complete!')
+        
+        console.log('Parsed custom:', { prompt, lyrics, bpm, duration, key, timeSig, status })
       }
     } catch (error) {
       console.error('Generation failed:', error)
@@ -180,6 +201,8 @@ export function GenerationPanel() {
   const loadRandomExample = async () => {
     try {
       const result = await generationAPI.loadRandomExample()
+      console.log('Random example:', result)
+      
       if (result && Array.isArray(result)) {
         const [description, instrumental, vocalLang] = result
         store.setDescription(description || '')
@@ -276,6 +299,7 @@ export function GenerationPanel() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="unknown">Auto-detect</SelectItem>
                       <SelectItem value="english">English</SelectItem>
                       <SelectItem value="spanish">Spanish</SelectItem>
                       <SelectItem value="french">French</SelectItem>
@@ -284,7 +308,6 @@ export function GenerationPanel() {
                       <SelectItem value="japanese">Japanese</SelectItem>
                       <SelectItem value="korean">Korean</SelectItem>
                       <SelectItem value="chinese">Chinese</SelectItem>
-                      <SelectItem value="unknown">Auto-detect</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -488,7 +511,7 @@ export function GenerationPanel() {
                     <div className="flex-1">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-sm font-medium">{progressState.message}</span>
-                        <span className="text-xs text-muted-foreground">{progressState.progress}%</span>
+                        <span className="text-xs text-muted-foreground">{progressState.progress.toFixed(0)}%</span>
                       </div>
                       <Progress 
                         value={progressState.progress} 
@@ -511,7 +534,7 @@ export function GenerationPanel() {
 
                   <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    <span>This may take a few minutes...</span>
+                    <span>Generation may take a few minutes...</span>
                   </div>
                 </div>
               </CardContent>
