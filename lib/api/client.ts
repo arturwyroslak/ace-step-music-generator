@@ -380,27 +380,27 @@ export const generationAPI = {
 
 // Dataset Management APIs (placeholder - not fully implemented)
 export const datasetAPI = {
-  saveDataset: async (savePath: string, datasetName: string) => {
+  saveDataset: async (savePath: string, datasetName: string): Promise<string> => {
     console.warn('⚠️ Dataset save API not implemented yet')
     throw new Error('Dataset save feature requires local setup. This feature works only with self-hosted ACE-STEP instance.')
   },
   
-  loadDataset: async (loadPath: string) => {
+  loadDataset: async (loadPath: string): Promise<any[]> => {
     console.warn('⚠️ Dataset load API not implemented yet')
     throw new Error('Dataset load feature requires local setup. This feature works only with self-hosted ACE-STEP instance.')
   },
   
-  preprocessDataset: async (tensorOutputDir: string, onProgress?: (event: GradioEvent) => void) => {
+  preprocessDataset: async (tensorOutputDir: string, onProgress?: (event: GradioEvent) => void): Promise<string> => {
     console.warn('⚠️ Dataset preprocessing API not implemented yet')
     throw new Error('Dataset preprocessing requires local setup. This feature works only with self-hosted ACE-STEP instance.')
   },
   
-  scan: async (directory: string) => {
+  scan: async (directory: string): Promise<any> => {
     console.warn('⚠️ Dataset scan API not implemented yet')
     throw new Error('Dataset scan feature requires local setup. This feature works only with self-hosted ACE-STEP instance.')
   },
   
-  preprocess: async (params: any) => {
+  preprocess: async (params: any): Promise<any> => {
     console.warn('⚠️ Dataset preprocess API not implemented yet')
     throw new Error('Dataset preprocessing requires local setup. This feature works only with self-hosted ACE-STEP instance.')
   },
@@ -408,7 +408,7 @@ export const datasetAPI = {
 
 // Training APIs (placeholder - not implemented yet)
 export const trainingAPI = {
-  loadTrainingDataset: async (tensorDir: string) => {
+  loadTrainingDataset: async (tensorDir: string): Promise<string> => {
     console.warn('⚠️ Training dataset load API not implemented yet')
     throw new Error('Training features require local setup. This feature works only with self-hosted ACE-STEP instance.')
   },
@@ -427,17 +427,17 @@ export const trainingAPI = {
     seed: number,
     outputDir: string,
     onProgress?: (event: GradioEvent) => void
-  ) => {
+  ): Promise<[string, string]> => {
     console.warn('⚠️ Training start API not implemented yet')
     throw new Error('Training features require local setup with GPU. This feature works only with self-hosted ACE-STEP instance.')
   },
   
-  stopTraining: async () => {
+  stopTraining: async (): Promise<void> => {
     console.warn('⚠️ Training stop API not implemented yet')
     throw new Error('Training features require local setup. This feature works only with self-hosted ACE-STEP instance.')
   },
   
-  train: async (params: any) => {
+  train: async (params: any): Promise<any> => {
     console.warn('⚠️ Training API not implemented yet')
     throw new Error('Training features require local setup with GPU. This feature works only with self-hosted ACE-STEP instance.')
   },
