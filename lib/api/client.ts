@@ -14,21 +14,22 @@ export interface GradioEvent {
 async function pollForResult(
   endpoint: string,
   eventId: string,
-  onProgress?: (event: GradioEvent) => void
+  onProgress?: (event: GradioEvent) => void,
+  useDirectAPI: boolean = false
 ): Promise<any> {
   const maxAttempts = API_CONFIG.maxPollAttempts
   let attempts = 0
-  const apiBase = getAPIBase()
+  const apiBase = useDirectAPI ? API_CONFIG.directBase : getAPIBase()
 
   while (attempts < maxAttempts) {
     try {
-      const url = API_CONFIG.useProxy
+      const url = (API_CONFIG.useProxy && !useDirectAPI)
         ? `${apiBase}/status/${endpoint}/${eventId}`
         : `${apiBase}/call/${endpoint}/${eventId}`
 
       const response = await fetch(url, {
         method: 'GET',
-        headers: API_CONFIG.useProxy ? {} : {
+        headers: (API_CONFIG.useProxy && !useDirectAPI) ? {} : {
           'Accept': 'text/event-stream',
         },
       })
@@ -111,19 +112,22 @@ async function pollForResult(
   throw new Error('Request timeout: No response from API after ' + (API_CONFIG.maxPollAttempts * API_CONFIG.pollInterval / 1000) + ' seconds')
 }
 
-// Generic API call handler
+// Generic API call handler with optional direct API bypass
 export async function callGradioAPI(
   endpoint: string,
   data: any[] = [],
-  onProgress?: (event: GradioEvent) => void
+  onProgress?: (event: GradioEvent) => void,
+  useDirectAPI: boolean = false // NEW: bypass proxy for long-running calls
 ): Promise<any> {
   try {
-    const apiBase = getAPIBase()
-    const callUrl = API_CONFIG.useProxy
-      ? `${apiBase}/call/${endpoint}`
-      : `${apiBase}/call/${endpoint}`
+    const apiBase = useDirectAPI ? API_CONFIG.directBase : getAPIBase()
+    const callUrl = `${apiBase}/call/${endpoint}`
 
-    console.log(`🚀 API call: ${endpoint}`, { useProxy: API_CONFIG.useProxy, data })
+    console.log(`🚀 API call: ${endpoint}`, { 
+      useProxy: API_CONFIG.useProxy && !useDirectAPI, 
+      useDirectAPI,
+      data 
+    })
 
     // POST request to initiate the call
     const postResponse = await fetch(callUrl, {
@@ -147,7 +151,7 @@ export async function callGradioAPI(
     console.log(`✅ Event ID: ${eventId}`)
 
     // Poll for results
-    const result = await pollForResult(endpoint, eventId, onProgress)
+    const result = await pollForResult(endpoint, eventId, onProgress, useDirectAPI)
     console.log(`✅ API call complete: ${endpoint}`, result)
     return result
   } catch (error) {
@@ -225,7 +229,7 @@ export const generationAPI = {
     // Step 2: Generate audio with generationwrapper
     console.log('🎵 Step 2: Generating audio with generationwrapper...')
     
-    // generationwrapper accepts 49 parameters!
+    // Use DIRECT API for generationwrapper to avoid Vercel timeout
     const audioResult = await callGradioAPI(
       'generationwrapper',
       [
@@ -279,7 +283,8 @@ export const generationAPI = {
         '',                     // 47: custom param
         false,                  // 48: debug mode
       ],
-      onProgress
+      onProgress,
+      true // USE DIRECT API - bypass Vercel proxy timeout
     )
 
     // generationwrapper returns 38 elements:
