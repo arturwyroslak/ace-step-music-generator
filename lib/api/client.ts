@@ -223,7 +223,7 @@ export const generationAPI = {
     const vocalOut = metadata[5] || 'unknown'
     const vocalOpt = metadata[6] || 'unknown'
     const timeSig = metadata[7] || '4/4'
-    const instrumental = metadata[8] || false
+    const isInstrumental = metadata[8] || false  // FIXED: renamed to avoid shadowing
     const status = metadata[15] || '✅ Metadata generated'
 
     console.log('✅ Metadata generated:', { 
@@ -243,7 +243,7 @@ export const generationAPI = {
       duration,
       key,
       timeSig,
-      instrumental,
+      instrumental: isInstrumental,  // FIXED: use renamed variable
       vocalLanguage: vocalOut,
       status,
       // Note: No audio files yet - user needs to click "Generate Audio" button
