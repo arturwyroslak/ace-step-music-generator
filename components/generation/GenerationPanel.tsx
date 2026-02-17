@@ -36,7 +36,14 @@ export function GenerationPanel() {
   const updateProgress = (event: GradioEvent) => {
     console.log('Progress event:', event)
     
-    if (event.event === 'generating') {
+    if (event.event === 'complete') {
+      setProgressState({
+        stage: 'complete',
+        progress: 100,
+        message: 'Generation complete!',
+        details: 'Music created successfully',
+      })
+    } else if (event.event === 'generating') {
       setProgressState({
         stage: 'generating',
         progress: 30,
@@ -91,7 +98,8 @@ export function GenerationPanel() {
         updateProgress
       )
 
-      console.log('Generation result:', result)
+      console.log('🎵 Generation result:', result)
+      console.log('📊 Result length:', result?.length)
 
       setProgressState({
         stage: 'complete',
@@ -100,25 +108,44 @@ export function GenerationPanel() {
         details: 'Music created successfully',
       })
 
-      // Parse result according to API documentation
-      // lambda_12 returns 11 elements:
-      // 0: Prompt, 1: Lyrics, 2: BPM, 3: Duration, 4: Key, 5: Vocal Lang (out), 
-      // 6: Vocal Lang (opt), 7: Time Sig, 8: Instrumental, 9: Thinking, 10: Status
-      if (result && Array.isArray(result)) {
-        const [prompt, lyrics, bpm, duration, key, vocalOut, vocalOpt, timeSig, instrumental, thinking, status] = result
+      // Parse result - API returns 16 elements
+      // 0: Caption/Prompt, 1: Lyrics, 2: BPM, 3: Duration, 4: Key, 
+      // 5: Vocal Lang (out), 6: Vocal Lang (opt), 7: Time Sig, 8: Instrumental,
+      // 9-14: UI updates, 15: Status message
+      if (result && Array.isArray(result) && result.length >= 8) {
+        const caption = result[0] || ''
+        const lyrics = result[1] || ''
+        const bpm = result[2] || 0
+        const duration = result[3] || 0
+        const key = result[4] || ''
+        const vocalOut = result[5] || ''
+        const vocalOpt = result[6] || ''
+        const timeSig = result[7] || ''
+        const status = result[15] || '✅ Generation complete!'
         
-        store.setPrompt(prompt || '')
-        store.setLyrics(lyrics || '')
-        store.setBPM(bpm || 0)
-        store.setDuration(duration || 0)
-        store.setKeySignature(key || '')
-        store.setTimeSignature(timeSig || '')
-        store.setGenerationStatus(status || '✅ Generation complete!')
+        store.setPrompt(caption)
+        store.setLyrics(lyrics)
+        store.setBPM(bpm)
+        store.setDuration(duration)
+        store.setKeySignature(key)
+        store.setTimeSignature(timeSig)
+        store.setGenerationStatus(status)
         
-        console.log('Parsed:', { prompt, lyrics, bpm, duration, key, vocalOut, timeSig, status })
+        console.log('✅ Parsed data:', { 
+          caption: caption.substring(0, 50) + '...', 
+          lyrics, 
+          bpm, 
+          duration, 
+          key, 
+          timeSig,
+          status: status.substring(0, 100) + '...'
+        })
+      } else {
+        console.warn('⚠️ Unexpected result format:', result)
+        store.setGenerationStatus('✅ Generation complete (unexpected format)')
       }
     } catch (error) {
-      console.error('Generation failed:', error)
+      console.error('❌ Generation failed:', error)
       setProgressState({
         stage: 'error',
         progress: 0,
@@ -161,7 +188,7 @@ export function GenerationPanel() {
         updateProgress
       )
 
-      console.log('Custom generation result:', result)
+      console.log('🎵 Custom generation result:', result)
 
       setProgressState({
         stage: 'complete',
@@ -170,22 +197,28 @@ export function GenerationPanel() {
         details: 'Music created successfully',
       })
 
-      // lambda_10 returns 8 elements
-      if (result && Array.isArray(result)) {
-        const [prompt, lyrics, bpm, duration, key, vocalLang, timeSig, status] = result
+      if (result && Array.isArray(result) && result.length >= 8) {
+        const prompt = result[0] || ''
+        const lyrics = result[1] || ''
+        const bpm = result[2] || 0
+        const duration = result[3] || 0
+        const key = result[4] || ''
+        const vocalLang = result[5] || ''
+        const timeSig = result[6] || ''
+        const status = result[7] || '✅ Complete!'
         
-        store.setPrompt(prompt || '')
-        store.setLyrics(lyrics || '')
-        store.setBPM(bpm || 0)
-        store.setDuration(duration || 0)
-        store.setKeySignature(key || '')
-        store.setTimeSignature(timeSig || '')
-        store.setGenerationStatus(status || '✅ Complete!')
+        store.setPrompt(prompt)
+        store.setLyrics(lyrics)
+        store.setBPM(bpm)
+        store.setDuration(duration)
+        store.setKeySignature(key)
+        store.setTimeSignature(timeSig)
+        store.setGenerationStatus(status)
         
-        console.log('Parsed custom:', { prompt, lyrics, bpm, duration, key, timeSig, status })
+        console.log('✅ Parsed custom:', { prompt: prompt.substring(0, 50), lyrics, bpm, duration, key, timeSig, status })
       }
     } catch (error) {
-      console.error('Generation failed:', error)
+      console.error('❌ Generation failed:', error)
       setProgressState({
         stage: 'error',
         progress: 0,
@@ -207,17 +240,11 @@ export function GenerationPanel() {
         const [description, instrumental, vocalLang] = result
         store.setDescription(description || '')
         store.setInstrumental(instrumental || false)
-        store.setVocalLanguage(vocalLang || 'english')
+        store.setVocalLanguage(vocalLang || 'unknown')
       }
     } catch (error) {
       console.error('Failed to load example:', error)
     }
-  }
-
-  const getProgressColor = () => {
-    if (progressState.stage === 'error') return 'bg-red-500'
-    if (progressState.stage === 'complete') return 'bg-green-500'
-    return 'bg-blue-500'
   }
 
   const getStageIcon = () => {
@@ -551,9 +578,39 @@ export function GenerationPanel() {
                 : 'border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20'
             }`}>
               <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  {getStageIcon()}
-                  <p className="text-sm font-medium">{store.generationStatus}</p>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    {getStageIcon()}
+                    <p className="text-sm font-medium">Generation Complete</p>
+                  </div>
+                  <div className="pl-8 space-y-2 text-sm">
+                    {store.prompt && (
+                      <div>
+                        <span className="font-medium">Prompt:</span>
+                        <p className="text-muted-foreground">{store.prompt}</p>
+                      </div>
+                    )}
+                    {store.lyrics && store.lyrics !== '[Instrumental]' && (
+                      <div>
+                        <span className="font-medium">Lyrics:</span>
+                        <p className="text-muted-foreground whitespace-pre-wrap">{store.lyrics}</p>
+                      </div>
+                    )}
+                    <div className="flex gap-4 flex-wrap">
+                      {store.bpm > 0 && (
+                        <span className="text-muted-foreground">BPM: {store.bpm}</span>
+                      )}
+                      {store.duration > 0 && (
+                        <span className="text-muted-foreground">Duration: {store.duration}s</span>
+                      )}
+                      {store.keySignature && (
+                        <span className="text-muted-foreground">Key: {store.keySignature}</span>
+                      )}
+                      {store.timeSignature && (
+                        <span className="text-muted-foreground">Time: {store.timeSignature}</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -49,29 +49,41 @@ async function pollForResult(
         if (line.startsWith('data: ')) {
           const data = line.slice(6)
           try {
-            const parsed = JSON.parse(data) as GradioEvent
+            const parsed = JSON.parse(data)
 
-            console.log('📥 Event:', parsed.event, parsed)
+            console.log('📥 Raw parsed:', parsed)
 
-            if (onProgress) {
-              onProgress(parsed)
-            }
+            // Handle both event-wrapped and direct data responses
+            if (parsed.event) {
+              console.log('📥 Event:', parsed.event)
 
-            if (parsed.event === 'complete') {
-              console.log('✅ Complete event data:', parsed.data)
-              return parsed.data
-            } else if (parsed.event === 'error') {
-              throw new Error(parsed.data || 'API error occurred')
-            } else if (parsed.event === 'generating') {
-              // Update progress
               if (onProgress) {
-                onProgress({ event: 'generating', data: parsed.data })
+                onProgress(parsed)
               }
-            } else if (parsed.event === 'progress') {
-              // Progress update
+
+              if (parsed.event === 'complete') {
+                console.log('✅ Complete event data:', parsed.data)
+                return parsed.data
+              } else if (parsed.event === 'error') {
+                throw new Error(parsed.data || 'API error occurred')
+              } else if (parsed.event === 'generating') {
+                if (onProgress) {
+                  onProgress({ event: 'generating', data: parsed.data })
+                }
+              } else if (parsed.event === 'progress') {
+                if (onProgress) {
+                  onProgress({ event: 'progress', data: parsed.data })
+                }
+              }
+            } else if (Array.isArray(parsed)) {
+              // Direct array response (this is what we're getting!)
+              console.log('✅ Direct data response:', parsed.length, 'elements')
               if (onProgress) {
-                onProgress({ event: 'progress', data: parsed.data })
+                onProgress({ event: 'complete', data: parsed })
               }
+              return parsed
+            } else {
+              console.log('📥 Unknown response format:', parsed)
             }
           } catch (e) {
             // Ignore parse errors for non-JSON lines
@@ -176,8 +188,8 @@ export const modelAPI = {
 // Generation APIs
 export const generationAPI = {
   // Simple mode generation
-  // Returns 11 elements according to API docs:
-  // 0: Prompt
+  // ACTUALLY returns 16 elements based on real API response:
+  // 0: Prompt/Caption
   // 1: Lyrics
   // 2: BPM
   // 3: Duration
@@ -186,8 +198,8 @@ export const generationAPI = {
   // 6: Vocal Language (optional)
   // 7: Time Signature
   // 8: Instrumental checkbox
-  // 9: Thinking checkbox
-  // 10: Generation Status
+  // 9-14: UI update objects
+  // 15: Generation Status with metadata
   generateSimple: (
     description: string,
     instrumental: boolean,
@@ -204,8 +216,6 @@ export const generationAPI = {
   ),
 
   // Custom mode generation
-  // Returns 8 elements:
-  // 0: Prompt, 1: Lyrics, 2: BPM, 3: Duration, 4: Key, 5: Vocal Lang, 6: Time Sig, 7: Status
   generateCustom: (
     prompt: string,
     lyrics: string,
@@ -232,7 +242,6 @@ export const generationAPI = {
   ) => callGradioAPI('lambda_9', [audioCodes, thinking], onProgress),
 
   // Load random example
-  // Returns 3 elements: [description, instrumental, vocalLanguage]
   loadRandomExample: () => callGradioAPI('load_random_simple_description'),
 }
 
