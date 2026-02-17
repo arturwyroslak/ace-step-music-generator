@@ -20,12 +20,16 @@ async function pollForResult(
   const maxAttempts = API_CONFIG.maxPollAttempts
   let attempts = 0
   const apiBase = useDirectAPI ? API_CONFIG.directBase : getAPIBase()
+  const startTime = Date.now()
 
   while (attempts < maxAttempts) {
     try {
       const url = (API_CONFIG.useProxy && !useDirectAPI)
         ? `${apiBase}/status/${endpoint}/${eventId}`
         : `${apiBase}/call/${endpoint}/${eventId}`
+
+      const elapsed = Math.round((Date.now() - startTime) / 1000)
+      console.log(`🔄 Poll #${attempts + 1}/${maxAttempts} (${elapsed}s elapsed)...`)
 
       const response = await fetch(url, {
         method: 'GET',
@@ -35,6 +39,7 @@ async function pollForResult(
       })
 
       if (!response.ok) {
+        console.warn(`⚠️ Poll failed: ${response.statusText}`)
         if (attempts >= maxAttempts - 1) {
           throw new Error(`Polling failed: ${response.statusText}`)
         }
@@ -46,6 +51,8 @@ async function pollForResult(
       const events = await response.text()
       const lines = events.split('\n').filter(line => line.trim())
 
+      console.log(`📥 Received ${lines.length} lines`)
+
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6)
@@ -54,25 +61,33 @@ async function pollForResult(
 
             // Handle both event-wrapped and direct data responses
             if (parsed.event) {
+              console.log(`📡 Event: ${parsed.event}`)
+              
               if (onProgress) {
                 onProgress(parsed)
               }
 
               if (parsed.event === 'complete') {
+                console.log('✅ Complete!')
                 return parsed.data
               } else if (parsed.event === 'error') {
+                console.error('❌ Error event:', parsed.data)
                 throw new Error(parsed.data || 'API error occurred')
               } else if (parsed.event === 'generating' || parsed.event === 'progress') {
+                console.log(`🎵 Progress: ${JSON.stringify(parsed.data).substring(0, 100)}...`)
                 if (onProgress) {
                   onProgress({ event: parsed.event, data: parsed.data })
                 }
               }
             } else if (Array.isArray(parsed)) {
               // Direct array response
+              console.log(`✅ Direct array response: ${parsed.length} elements`)
               if (onProgress) {
                 onProgress({ event: 'complete', data: parsed })
               }
               return parsed
+            } else {
+              console.log('🤔 Unknown format:', JSON.stringify(parsed).substring(0, 100))
             }
           } catch (e) {
             // Ignore parse errors for non-JSON lines
@@ -88,7 +103,7 @@ async function pollForResult(
       await new Promise(resolve => setTimeout(resolve, API_CONFIG.pollInterval))
       attempts++
     } catch (error) {
-      console.error('Poll error:', error)
+      console.error('❌ Poll error:', error)
       if (attempts >= maxAttempts - 1) {
         throw error
       }
@@ -300,6 +315,8 @@ export const generationAPI = {
     onProgress?: (event: GradioEvent) => void
   ) => {
     console.log('🎼 Generating audio with lambda_13...')
+    console.log(`⏱️ Expected duration: ~${Math.round(duration * 0.15)} minutes for ${duration}s of audio`)
+    
     const result = await callGradioAPI(
       'lambda_13',
       [
