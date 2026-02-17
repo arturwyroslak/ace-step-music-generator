@@ -378,22 +378,67 @@ export const generationAPI = {
   },
 }
 
-// Dataset Management APIs (placeholder - not implemented yet)
+// Dataset Management APIs (placeholder - not fully implemented)
 export const datasetAPI = {
-  scan: async (directory: string) => {
-    console.warn('⚠️ Dataset API not implemented yet')
-    throw new Error('Dataset API not available in this version')
+  saveDataset: async (savePath: string, datasetName: string) => {
+    console.warn('⚠️ Dataset save API not implemented yet')
+    throw new Error('Dataset save feature requires local setup. This feature works only with self-hosted ACE-STEP instance.')
   },
+  
+  loadDataset: async (loadPath: string) => {
+    console.warn('⚠️ Dataset load API not implemented yet')
+    throw new Error('Dataset load feature requires local setup. This feature works only with self-hosted ACE-STEP instance.')
+  },
+  
+  preprocessDataset: async (tensorOutputDir: string, onProgress?: (event: GradioEvent) => void) => {
+    console.warn('⚠️ Dataset preprocessing API not implemented yet')
+    throw new Error('Dataset preprocessing requires local setup. This feature works only with self-hosted ACE-STEP instance.')
+  },
+  
+  scan: async (directory: string) => {
+    console.warn('⚠️ Dataset scan API not implemented yet')
+    throw new Error('Dataset scan feature requires local setup. This feature works only with self-hosted ACE-STEP instance.')
+  },
+  
   preprocess: async (params: any) => {
-    console.warn('⚠️ Dataset API not implemented yet')
-    throw new Error('Dataset API not available in this version')
+    console.warn('⚠️ Dataset preprocess API not implemented yet')
+    throw new Error('Dataset preprocessing requires local setup. This feature works only with self-hosted ACE-STEP instance.')
   },
 }
 
 // Training APIs (placeholder - not implemented yet)
 export const trainingAPI = {
+  loadTrainingDataset: async (tensorDir: string) => {
+    console.warn('⚠️ Training dataset load API not implemented yet')
+    throw new Error('Training features require local setup. This feature works only with self-hosted ACE-STEP instance.')
+  },
+  
+  startTraining: async (
+    tensorDir: string,
+    loraRank: number,
+    loraAlpha: number,
+    loraDropout: number,
+    learningRate: number,
+    maxEpochs: number,
+    batchSize: number,
+    gradAccum: number,
+    saveEveryN: number,
+    shift: number,
+    seed: number,
+    outputDir: string,
+    onProgress?: (event: GradioEvent) => void
+  ) => {
+    console.warn('⚠️ Training start API not implemented yet')
+    throw new Error('Training features require local setup with GPU. This feature works only with self-hosted ACE-STEP instance.')
+  },
+  
+  stopTraining: async () => {
+    console.warn('⚠️ Training stop API not implemented yet')
+    throw new Error('Training features require local setup. This feature works only with self-hosted ACE-STEP instance.')
+  },
+  
   train: async (params: any) => {
     console.warn('⚠️ Training API not implemented yet')
-    throw new Error('Training API not available in this version')
+    throw new Error('Training features require local setup with GPU. This feature works only with self-hosted ACE-STEP instance.')
   },
 }
