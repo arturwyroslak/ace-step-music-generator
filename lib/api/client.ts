@@ -1,7 +1,7 @@
-// ACE-STEP API Client
+// ACE-STEP API Client with polling fallback
 // Handles all 99 API endpoints with proper typing and event streaming
 
-const API_BASE = 'https://ace-step-ace-step-v1-5.hf.space/gradio_api'
+const API_BASE = '/api/gradio' // Use Next.js API route as proxy
 
 export interface GradioEventData {
   data: any[]
@@ -12,77 +12,73 @@ export interface GradioEvent {
   data?: any
 }
 
-// Polling fallback when EventSource fails
+// Polling-based API call (fallback for CORS issues)
 async function pollForResult(
   endpoint: string,
   eventId: string,
-  onProgress?: (event: GradioEvent) => void,
-  maxAttempts = 60,
-  intervalMs = 5000
+  onProgress?: (event: GradioEvent) => void
 ): Promise<any> {
+  const maxAttempts = 600 // 5 minutes with 500ms intervals
   let attempts = 0
-  
+
   while (attempts < maxAttempts) {
     try {
-      const response = await fetch(`${API_BASE}/call/${endpoint}/${eventId}`)
-      
+      const response = await fetch(`${API_BASE}/status/${endpoint}/${eventId}`, {
+        method: 'GET',
+      })
+
       if (!response.ok) {
         throw new Error(`Polling failed: ${response.statusText}`)
       }
 
-      const text = await response.text()
-      
-      // Parse multiple events separated by newlines
-      const lines = text.trim().split('\n')
-      
-      for (const line of lines) {
-        if (!line.trim() || !line.startsWith('data: ')) continue
-        
-        try {
-          const jsonStr = line.substring(6) // Remove 'data: ' prefix
-          const parsed = JSON.parse(jsonStr) as GradioEvent
-          
-          if (onProgress) {
-            onProgress(parsed)
-          }
+      const events = await response.text()
+      const lines = events.split('\n').filter(line => line.trim())
 
-          if (parsed.event === 'complete') {
-            return parsed.data
-          } else if (parsed.event === 'error') {
-            throw new Error(parsed.data || 'API error occurred')
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          try {
+            const parsed = JSON.parse(data) as GradioEvent
+
+            if (onProgress) {
+              onProgress(parsed)
+            }
+
+            if (parsed.event === 'complete') {
+              return parsed.data
+            } else if (parsed.event === 'error') {
+              throw new Error(parsed.data || 'API error occurred')
+            }
+          } catch (e) {
+            // Ignore parse errors for non-JSON lines
           }
-        } catch (e) {
-          // Ignore parse errors for individual lines
-          console.warn('Failed to parse event:', line, e)
         }
       }
-      
+
       // Wait before next poll
-      await new Promise(resolve => setTimeout(resolve, intervalMs))
+      await new Promise(resolve => setTimeout(resolve, 500))
       attempts++
-      
     } catch (error) {
-      console.error('Polling error:', error)
-      attempts++
-      
-      if (attempts >= maxAttempts) {
-        throw new Error('Polling timeout - max attempts reached')
+      if (attempts >= maxAttempts - 1) {
+        throw error
       }
-      
-      await new Promise(resolve => setTimeout(resolve, intervalMs))
+      await new Promise(resolve => setTimeout(resolve, 500))
+      attempts++
     }
   }
-  
+
   throw new Error('Polling timeout')
 }
 
-// Generic API call handler with event streaming and polling fallback
+// Generic API call handler with polling
 export async function callGradioAPI(
   endpoint: string,
   data: any[] = [],
   onProgress?: (event: GradioEvent) => void
 ): Promise<any> {
   try {
+    console.log(`API call started: ${endpoint}`, data)
+
     // POST request to initiate the call
     const postResponse = await fetch(`${API_BASE}/call/${endpoint}`, {
       method: 'POST',
@@ -91,7 +87,8 @@ export async function callGradioAPI(
     })
 
     if (!postResponse.ok) {
-      throw new Error(`API call failed: ${postResponse.statusText}`)
+      const errorText = await postResponse.text()
+      throw new Error(`API call failed: ${postResponse.statusText} - ${errorText}`)
     }
 
     const postData = await postResponse.json()
@@ -103,64 +100,10 @@ export async function callGradioAPI(
 
     console.log(`API call started: ${endpoint}, event_id: ${eventId}`)
 
-    // Try EventSource first
-    return new Promise((resolve, reject) => {
-      let eventSourceFailed = false
-      const eventSource = new EventSource(`${API_BASE}/call/${endpoint}/${eventId}`)
-      
-      const timeout = setTimeout(() => {
-        eventSource.close()
-        if (!eventSourceFailed) {
-          console.log('EventSource timeout, switching to polling...')
-          eventSourceFailed = true
-          
-          // Fallback to polling
-          pollForResult(endpoint, eventId, onProgress)
-            .then(resolve)
-            .catch(reject)
-        }
-      }, 10000) // 10 second timeout for EventSource
-
-      eventSource.onmessage = (event) => {
-        clearTimeout(timeout)
-        
-        try {
-          const parsed = JSON.parse(event.data) as GradioEvent
-          
-          if (onProgress) {
-            onProgress(parsed)
-          }
-
-          if (parsed.event === 'complete') {
-            eventSource.close()
-            resolve(parsed.data)
-          } else if (parsed.event === 'error') {
-            eventSource.close()
-            reject(new Error(parsed.data || 'API error occurred'))
-          }
-        } catch (e) {
-          console.error('Error parsing event:', e)
-        }
-      }
-
-      eventSource.onerror = (error) => {
-        console.log('EventSource error:', error)
-        
-        if (!eventSourceFailed) {
-          eventSourceFailed = true
-          clearTimeout(timeout)
-          eventSource.close()
-          
-          console.log('EventSource failed, switching to polling...')
-          
-          // Fallback to polling
-          pollForResult(endpoint, eventId, onProgress)
-            .then(resolve)
-            .catch(reject)
-        }
-      }
-    })
+    // Use polling to get results
+    return await pollForResult(endpoint, eventId, onProgress)
   } catch (error) {
+    console.error('API call failed:', error)
     throw error
   }
 }
