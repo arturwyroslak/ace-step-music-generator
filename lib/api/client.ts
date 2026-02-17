@@ -191,9 +191,9 @@ export const modelAPI = {
 
 // Generation APIs
 export const generationAPI = {
-  // Simple mode generation with full workflow:
-  // 1. lambda_12: Generate metadata (prompt, lyrics, BPM, duration, etc.)
-  // 2. generationwrapper: Generate actual audio files using metadata
+  // Simple mode generation - generates METADATA only (fast)
+  // For actual audio generation, user needs to visit the HuggingFace Space
+  // or we need to implement a separate audio generation endpoint
   generateSimple: async (
     description: string,
     instrumental: boolean,
@@ -204,8 +204,7 @@ export const generationAPI = {
     thinking: boolean,
     onProgress?: (event: GradioEvent) => void
   ) => {
-    // Step 1: Generate metadata with lambda_12
-    console.log('🎵 Step 1: Generating metadata with lambda_12...')
+    console.log('🎵 Generating music metadata with lambda_12...')
     const metadata = await callGradioAPI(
       'lambda_12',
       [description, instrumental, vocalLanguage, temperature, topK, topP, thinking],
@@ -222,95 +221,35 @@ export const generationAPI = {
     const duration = metadata[3] || 15
     const key = metadata[4] || ''
     const vocalOut = metadata[5] || 'unknown'
+    const vocalOpt = metadata[6] || 'unknown'
     const timeSig = metadata[7] || '4/4'
+    const instrumental = metadata[8] || false
+    const status = metadata[15] || '✅ Metadata generated'
 
-    console.log('✅ Metadata generated:', { prompt: prompt.substring(0, 50), lyrics, bpm, duration, key })
-
-    // Step 2: Generate audio with generationwrapper
-    console.log('🎵 Step 2: Generating audio with generationwrapper...')
-    
-    // Use DIRECT API for generationwrapper to avoid Vercel timeout
-    const audioResult = await callGradioAPI(
-      'generationwrapper',
-      [
-        'acestep-v1.5-turbo',  // 0: model
-        'simple',               // 1: generation mode
-        description,            // 2: song description (simple mode)
-        vocalLanguage,          // 3: vocal language optional
-        prompt,                 // 4: prompt (from lambda_12)
-        lyrics,                 // 5: lyrics (from lambda_12)
-        bpm,                    // 6: bpm
-        key,                    // 7: key signature
-        timeSig,                // 8: time signature
-        vocalOut,               // 9: vocal language
-        8,                      // 10: DiT inference steps
-        7,                      // 11: CFG scale
-        true,                   // 12: random seed
-        '-1',                   // 13: seed value
-        null,                   // 14: reference audio
-        duration,               // 15: duration
-        2,                      // 16: batch size (2 samples)
-        null,                   // 17: source audio
-        '',                     // 18: audio codes
-        0,                      // 19: start time
-        -1,                     // 20: end time
-        'Fill the audio semantic mask based on the given conditions', // 21: mask condition
-        1,                      // 22: strength
-        'text2music',           // 23: mode
-        false,                  // 24: use custom codes
-        0,                      // 25: guidance start
-        1,                      // 26: guidance end
-        3,                      // 27: shift
-        'ode',                  // 28: inference method
-        '',                     // 29: custom timesteps
-        'mp3',                  // 30: audio format
-        temperature,            // 31: LM temperature
-        thinking,               // 32: thinking mode
-        2,                      // 33: LM CFG scale
-        topK,                   // 34: LM top-K
-        topP,                   // 35: LM top-P
-        'NO USER INPUT',        // 36: LM negative prompt
-        true,                   // 37: use LM
-        true,                   // 38: use DiT
-        true,                   // 39: use vocals
-        false,                  // 40: (unknown param)
-        thinking,               // 41: extended thinking
-        false,                  // 42: get scores
-        false,                  // 43: get LRC
-        0.5,                    // 44: quality threshold
-        8,                      // 45: num samples
-        'woodwinds',            // 46: instrument type
-        '',                     // 47: custom param
-        false,                  // 48: debug mode
-      ],
-      onProgress,
-      true // USE DIRECT API - bypass Vercel proxy timeout
-    )
-
-    // generationwrapper returns 38 elements:
-    // [0-7]: Audio files (Generated Music Sample 1-8)
-    // [8]: All files download
-    // [9]: Generation details markdown
-    // [10]: Generation status
-    // [11]: Seed
-    // [12-19]: Quality scores
-    // [20-27]: LM codes
-    // [28-35]: Lyrics timestamps
-    // [36]: Current batch
-    // [37]: Next batch status
-
-    console.log('✅ Audio generated! Samples:', audioResult.slice(0, 8).filter(Boolean).length)
+    console.log('✅ Metadata generated:', { 
+      prompt: prompt.substring(0, 50) + '...', 
+      lyrics: lyrics.substring(0, 100) + '...', 
+      bpm, 
+      duration, 
+      key,
+      timeSig 
+    })
 
     return {
       metadata,      // Original metadata from lambda_12
-      audioResult,   // Full audio generation result
-      audios: audioResult.slice(0, 8).filter(Boolean), // First 8 = audio files
       prompt,
       lyrics,
       bpm,
       duration,
       key,
       timeSig,
+      instrumental,
+      vocalLanguage: vocalOut,
+      status,
+      // Note: No audio files yet - user needs to click "Generate Audio" button
+      // or visit the HuggingFace Space directly
+      audios: [],
+      audioGeneration URL: 'https://huggingface.co/spaces/Ace-Step/ace-step-v1-5',
     }
   },
 
