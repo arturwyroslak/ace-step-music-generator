@@ -52,45 +52,33 @@ async function pollForResult(
           try {
             const parsed = JSON.parse(data)
 
-            console.log('📥 Raw parsed:', parsed)
-
             // Handle both event-wrapped and direct data responses
             if (parsed.event) {
-              console.log('📥 Event:', parsed.event)
-
               if (onProgress) {
                 onProgress(parsed)
               }
 
               if (parsed.event === 'complete') {
-                console.log('✅ Complete event data:', parsed.data)
                 return parsed.data
               } else if (parsed.event === 'error') {
                 throw new Error(parsed.data || 'API error occurred')
-              } else if (parsed.event === 'generating') {
+              } else if (parsed.event === 'generating' || parsed.event === 'progress') {
                 if (onProgress) {
-                  onProgress({ event: 'generating', data: parsed.data })
-                }
-              } else if (parsed.event === 'progress') {
-                if (onProgress) {
-                  onProgress({ event: 'progress', data: parsed.data })
+                  onProgress({ event: parsed.event, data: parsed.data })
                 }
               }
             } else if (Array.isArray(parsed)) {
-              // Direct array response (this is what we're getting!)
-              console.log('✅ Direct data response:', parsed.length, 'elements')
+              // Direct array response
               if (onProgress) {
                 onProgress({ event: 'complete', data: parsed })
               }
               return parsed
-            } else {
-              console.log('📥 Unknown response format:', parsed)
             }
           } catch (e) {
             // Ignore parse errors for non-JSON lines
-            if (data.includes('error') || data.includes('Error')) {
-              console.error('Parse error:', data)
-              throw new Error(data)
+            if (data.includes('error') || data.includes('Error') || data.includes('Traceback')) {
+              console.error('❌ API Error:', data)
+              throw new Error(`API Error: ${data.substring(0, 200)}`)
             }
           }
         }
@@ -126,6 +114,7 @@ export async function callGradioAPI(
     console.log(`🚀 API call: ${endpoint}`, { 
       useProxy: API_CONFIG.useProxy && !useDirectAPI, 
       useDirectAPI,
+      apiBase,
       dataLength: data.length 
     })
 
@@ -139,7 +128,7 @@ export async function callGradioAPI(
     if (!postResponse.ok) {
       const errorText = await postResponse.text()
       console.error('❌ API call failed:', errorText)
-      throw new Error(`API call failed: ${postResponse.statusText} - ${errorText}`)
+      throw new Error(`API call failed: ${postResponse.statusText} - ${errorText.substring(0, 200)}`)
     }
 
     // Try to parse JSON, but handle text responses too
@@ -150,7 +139,7 @@ export async function callGradioAPI(
       postData = await postResponse.json()
     } else {
       const text = await postResponse.text()
-      console.error('❌ Non-JSON response:', text)
+      console.error('❌ Non-JSON response:', text.substring(0, 200))
       throw new Error(`API returned non-JSON response: ${text.substring(0, 200)}`)
     }
 
@@ -205,6 +194,7 @@ export const modelAPI = {
 // Generation APIs
 export const generationAPI = {
   // Simple mode generation - generates METADATA only (fast)
+  // NOTE: Using direct API to avoid proxy issues
   generateSimple: async (
     description: string,
     instrumental: boolean,
@@ -219,7 +209,8 @@ export const generationAPI = {
     const metadata = await callGradioAPI(
       'lambda_12',
       [description, instrumental, vocalLanguage, temperature, topK, topP, thinking],
-      onProgress
+      onProgress,
+      true // Use direct API to avoid proxy issues
     )
 
     // lambda_12 returns 11 elements:
@@ -239,7 +230,7 @@ export const generationAPI = {
 
     console.log('✅ Metadata generated:', { 
       prompt: prompt.substring(0, 50) + '...', 
-      lyrics: lyrics.substring(0, 100) + '...', 
+      lyrics: lyrics ? lyrics.substring(0, 100) + '...' : '[Instrumental]', 
       bpm, 
       duration, 
       key,
