@@ -377,3 +377,23 @@ export const generationAPI = {
     return audioResult
   },
 }
+
+// Dataset Management APIs (placeholder - not implemented yet)
+export const datasetAPI = {
+  scan: async (directory: string) => {
+    console.warn('⚠️ Dataset API not implemented yet')
+    throw new Error('Dataset API not available in this version')
+  },
+  preprocess: async (params: any) => {
+    console.warn('⚠️ Dataset API not implemented yet')
+    throw new Error('Dataset API not available in this version')
+  },
+}
+
+// Training APIs (placeholder - not implemented yet)
+export const trainingAPI = {
+  train: async (params: any) => {
+    console.warn('⚠️ Training API not implemented yet')
+    throw new Error('Training API not available in this version')
+  },
+}
