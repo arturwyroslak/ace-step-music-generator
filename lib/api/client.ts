@@ -1,7 +1,8 @@
 // ACE-STEP API Client
 // Handles all 99 API endpoints with proper typing and event streaming
 
-const API_BASE = 'https://ace-step-ace-step-v1-5.hf.space/gradio_api'
+const API_BASE = 'https://ace-step-ace-step-v1-5.hf.space'
+const GRADIO_API = `${API_BASE}/gradio_api`
 
 export interface GradioEventData {
   data: any[]
@@ -12,7 +13,61 @@ export interface GradioEvent {
   data?: any
 }
 
-// Generic API call handler with event streaming
+// Polling fallback when EventSource fails (CORS issues)
+async function pollForResult(
+  endpoint: string,
+  eventId: string,
+  onProgress?: (event: GradioEvent) => void
+): Promise<any> {
+  const maxAttempts = 600 // 5 minutes with 500ms intervals
+  let attempts = 0
+
+  while (attempts < maxAttempts) {
+    try {
+      const response = await fetch(`${GRADIO_API}/call/${endpoint}/${eventId}`)
+      
+      if (!response.ok) {
+        throw new Error(`Polling failed: ${response.statusText}`)
+      }
+
+      const text = await response.text()
+      const lines = text.split('\n').filter(line => line.trim())
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6))
+            
+            if (onProgress) {
+              onProgress(data)
+            }
+
+            if (data.msg === 'process_completed') {
+              return data.output?.data || data.output
+            }
+
+            if (data.msg === 'error') {
+              throw new Error(data.error || 'API error occurred')
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500))
+      attempts++
+    } catch (error) {
+      console.error('Polling error:', error)
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      attempts++
+    }
+  }
+
+  throw new Error('Request timeout - no result received')
+}
+
+// Generic API call handler with event streaming and fallback
 export async function callGradioAPI(
   endpoint: string,
   data: any[] = [],
@@ -20,9 +75,11 @@ export async function callGradioAPI(
 ): Promise<any> {
   try {
     // POST request to initiate the call
-    const postResponse = await fetch(`${API_BASE}/call/${endpoint}`, {
+    const postResponse = await fetch(`${GRADIO_API}/call/${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ data }),
     })
 
@@ -37,41 +94,97 @@ export async function callGradioAPI(
       throw new Error('No event_id received from API')
     }
 
-    // Stream GET request for results
-    const eventSource = new EventSource(`${API_BASE}/call/${endpoint}/${eventId}`)
-    
+    // Try EventSource first, fall back to polling on error
     return new Promise((resolve, reject) => {
+      let resolved = false
       const timeout = setTimeout(() => {
-        eventSource.close()
-        reject(new Error('API request timeout'))
+        if (!resolved) {
+          resolved = true
+          reject(new Error('API request timeout'))
+        }
       }, 300000) // 5 minute timeout
 
-      eventSource.onmessage = (event) => {
-        try {
-          const parsed = JSON.parse(event.data) as GradioEvent
-          
-          if (onProgress) {
-            onProgress(parsed)
-          }
+      // Try to use EventSource
+      try {
+        const eventSource = new EventSource(
+          `${GRADIO_API}/call/${endpoint}/${eventId}`
+        )
 
-          if (parsed.event === 'complete') {
-            clearTimeout(timeout)
-            eventSource.close()
-            resolve(parsed.data)
-          } else if (parsed.event === 'error') {
-            clearTimeout(timeout)
-            eventSource.close()
-            reject(new Error(parsed.data || 'API error occurred'))
+        let hasError = false
+
+        eventSource.onmessage = (event) => {
+          try {
+            const parsed = JSON.parse(event.data)
+            
+            if (onProgress && !resolved) {
+              onProgress(parsed)
+            }
+
+            // Check for completion
+            if (parsed.msg === 'process_completed') {
+              if (!resolved) {
+                resolved = true
+                clearTimeout(timeout)
+                eventSource.close()
+                resolve(parsed.output?.data || parsed.output)
+              }
+            } else if (parsed.msg === 'error') {
+              if (!resolved) {
+                resolved = true
+                clearTimeout(timeout)
+                eventSource.close()
+                reject(new Error(parsed.error || 'API error occurred'))
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing event:', e)
           }
-        } catch (e) {
-          console.error('Error parsing event:', e)
         }
-      }
 
-      eventSource.onerror = (error) => {
-        clearTimeout(timeout)
-        eventSource.close()
-        reject(new Error('EventSource error'))
+        eventSource.onerror = (error) => {
+          if (!hasError && !resolved) {
+            hasError = true
+            eventSource.close()
+            
+            console.log('EventSource failed, switching to polling...')
+            
+            // Fall back to polling
+            pollForResult(endpoint, eventId, onProgress)
+              .then(result => {
+                if (!resolved) {
+                  resolved = true
+                  clearTimeout(timeout)
+                  resolve(result)
+                }
+              })
+              .catch(err => {
+                if (!resolved) {
+                  resolved = true
+                  clearTimeout(timeout)
+                  reject(err)
+                }
+              })
+          }
+        }
+      } catch (e) {
+        // If EventSource constructor fails, use polling
+        console.log('EventSource not available, using polling...')
+        
+        pollForResult(endpoint, eventId, onProgress)
+          .then(result => {
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeout)
+              resolve(result)
+            }
+          })
+          .catch(err => {
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeout)
+              reject(err)
+            }
+          })
       }
     })
   } catch (error) {
