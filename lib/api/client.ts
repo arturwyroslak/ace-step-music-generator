@@ -249,7 +249,7 @@ export const generationAPI = {
       // Note: No audio files yet - user needs to click "Generate Audio" button
       // or visit the HuggingFace Space directly
       audios: [],
-      audioGeneration URL: 'https://huggingface.co/spaces/Ace-Step/ace-step-v1-5',
+      audioGenerationURL: 'https://huggingface.co/spaces/Ace-Step/ace-step-v1-5',
     }
   },
 
