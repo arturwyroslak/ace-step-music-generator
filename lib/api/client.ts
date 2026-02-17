@@ -351,6 +351,65 @@ export const generationAPI = {
     return result
   },
 
+  // Simplified audio generation wrapper with sensible defaults
+  generateAudioSimple: async (
+    prompt: string,
+    lyrics: string,
+    bpm: number,
+    keySignature: string,
+    vocalLanguage: string,
+    timeSignature: string,
+    duration: number,
+    onProgress?: (event: GradioEvent) => void
+  ) => {
+    return generationAPI.generateAudio(
+      prompt,
+      lyrics,
+      bpm,
+      keySignature,
+      vocalLanguage,
+      timeSignature,
+      duration,
+      2, // batchSize (generate 2 variations)
+      false, // thinking
+      duration, // audioDuration (same as duration)
+      null, // srcAudio
+      0, // startTime
+      1, // numSegments
+      null, // refAudio
+      '', // contextPrompt
+      0, // contextStart
+      10, // contextDuration
+      '', // maskPrompt
+      0, // maskStart
+      'text2music', // mode
+      true, // useHybridCFG
+      3.0, // cfgScale
+      8, // ditSteps (turbo default)
+      'single_step', // inferenceMethod
+      '', // customTimesteps
+      'flac', // audioFormat
+      0.85, // temperature
+      false, // thinking2
+      1.5, // lmCfgScale
+      0, // topK
+      0.9, // topP
+      '', // negativePrompt
+      false, // useAudioLoRA
+      false, // useTextLoRA
+      true, // useAudioLM
+      false, // thinking3
+      false, // genScores
+      true, // genLyrics
+      false, // genNextBatch
+      0, // qualityScore
+      0, // randomSegments
+      '', // maskInstrument
+      [], // maskInstruments
+      onProgress
+    )
+  },
+
   // Custom mode generation
   generateCustom: (
     prompt: string,
