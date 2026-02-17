@@ -12,15 +12,53 @@ import { Slider } from '@/components/ui/slider'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import { Progress } from '@/components/ui/progress'
 import { useGenerationStore } from '@/lib/store/generation'
-import { generationAPI } from '@/lib/api/client'
-import { Download, Loader2, Music, Sparkles, Shuffle } from 'lucide-react'
+import { generationAPI, GradioEvent } from '@/lib/api/client'
+import { Download, Loader2, Music, Sparkles, Shuffle, Clock, CheckCircle2 } from 'lucide-react'
 import { parseAudioURL } from '@/lib/utils'
+
+interface ProgressState {
+  stage: string
+  progress: number
+  message: string
+  details?: string
+}
 
 export function GenerationPanel() {
   const [generationMode, setGenerationMode] = useState<'simple' | 'custom'>('simple')
   const store = useGenerationStore()
   const [audioResults, setAudioResults] = useState<string[]>([])
+  const [progressState, setProgressState] = useState<ProgressState>({
+    stage: 'idle',
+    progress: 0,
+    message: '',
+  })
+
+  const updateProgress = (event: GradioEvent) => {
+    if (event.event === 'generating') {
+      setProgressState({
+        stage: 'generating',
+        progress: 30,
+        message: 'Generating music...',
+        details: 'Processing your request',
+      })
+    } else if (event.event === 'progress') {
+      const progress = event.data?.progress || 50
+      setProgressState({
+        stage: 'processing',
+        progress: Math.min(progress, 90),
+        message: 'Processing audio...',
+        details: event.data?.message || 'Creating your music',
+      })
+    } else if (event.event === 'heartbeat') {
+      setProgressState(prev => ({
+        ...prev,
+        progress: Math.min(prev.progress + 2, 95),
+        details: 'Still working...',
+      }))
+    }
+  }
 
   const handleGenerateSimple = async () => {
     if (!store.description.trim()) {
@@ -31,7 +69,12 @@ export function GenerationPanel() {
     store.setIsGenerating(true)
     store.clearGeneratedAudios()
     setAudioResults([])
-    store.setGenerationStatus('Generating music...')
+    setProgressState({
+      stage: 'starting',
+      progress: 10,
+      message: 'Initializing generation...',
+      details: 'Connecting to API',
+    })
 
     try {
       const result = await generationAPI.generateSimple(
@@ -42,14 +85,17 @@ export function GenerationPanel() {
         store.topK,
         store.topP,
         store.thinking,
-        (event) => {
-          if (event.event === 'progress') {
-            store.setGenerationStatus('Processing...')
-          }
-        }
+        updateProgress
       )
 
-      // Parse result - update based on actual response structure
+      setProgressState({
+        stage: 'complete',
+        progress: 100,
+        message: 'Generation complete!',
+        details: 'Music created successfully',
+      })
+
+      // Parse result
       if (result && Array.isArray(result)) {
         const [prompt, lyrics, bpm, duration, key, vocal, timeSig, ...rest] = result
         store.setPrompt(prompt || '')
@@ -60,10 +106,16 @@ export function GenerationPanel() {
         store.setTimeSignature(timeSig || '')
       }
 
-      store.setGenerationStatus('Generation complete!')
+      store.setGenerationStatus('✅ Generation complete!')
     } catch (error) {
       console.error('Generation failed:', error)
-      store.setGenerationStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setProgressState({
+        stage: 'error',
+        progress: 0,
+        message: 'Generation failed',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      })
+      store.setGenerationStatus(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       store.setIsGenerating(false)
     }
@@ -78,7 +130,12 @@ export function GenerationPanel() {
     store.setIsGenerating(true)
     store.clearGeneratedAudios()
     setAudioResults([])
-    store.setGenerationStatus('Generating music...')
+    setProgressState({
+      stage: 'starting',
+      progress: 10,
+      message: 'Initializing generation...',
+      details: 'Preparing custom parameters',
+    })
 
     try {
       const result = await generationAPI.generateCustom(
@@ -92,22 +149,29 @@ export function GenerationPanel() {
         store.topK,
         store.topP,
         store.thinking,
-        (event) => {
-          if (event.event === 'progress') {
-            store.setGenerationStatus('Processing...')
-          }
-        }
+        updateProgress
       )
+
+      setProgressState({
+        stage: 'complete',
+        progress: 100,
+        message: 'Generation complete!',
+        details: 'Music created successfully',
+      })
 
       if (result && Array.isArray(result)) {
         const [updatedPrompt, updatedLyrics, updatedBpm, updatedDuration, updatedKey, updatedVocal, updatedTimeSig, status] = result
-        store.setGenerationStatus(status || 'Complete!')
+        store.setGenerationStatus(status || '✅ Complete!')
       }
-
-      store.setGenerationStatus('Generation complete!')
     } catch (error) {
       console.error('Generation failed:', error)
-      store.setGenerationStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setProgressState({
+        stage: 'error',
+        progress: 0,
+        message: 'Generation failed',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      })
+      store.setGenerationStatus(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       store.setIsGenerating(false)
     }
@@ -124,6 +188,25 @@ export function GenerationPanel() {
       }
     } catch (error) {
       console.error('Failed to load example:', error)
+    }
+  }
+
+  const getProgressColor = () => {
+    if (progressState.stage === 'error') return 'bg-red-500'
+    if (progressState.stage === 'complete') return 'bg-green-500'
+    return 'bg-blue-500'
+  }
+
+  const getStageIcon = () => {
+    switch (progressState.stage) {
+      case 'complete':
+        return <CheckCircle2 className="h-5 w-5 text-green-500" />
+      case 'error':
+        return <div className="h-5 w-5 rounded-full bg-red-500" />
+      case 'idle':
+        return <Music className="h-5 w-5 text-muted-foreground" />
+      default:
+        return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
     }
   }
 
@@ -155,6 +238,7 @@ export function GenerationPanel() {
                     size="sm"
                     onClick={loadRandomExample}
                     className="gap-2"
+                    disabled={store.isGenerating}
                   >
                     <Shuffle className="h-4 w-4" />
                     Random Example
@@ -166,6 +250,7 @@ export function GenerationPanel() {
                   value={store.description}
                   onChange={(e) => store.setDescription(e.target.value)}
                   rows={4}
+                  disabled={store.isGenerating}
                 />
               </div>
 
@@ -174,6 +259,7 @@ export function GenerationPanel() {
                   id="instrumental"
                   checked={store.instrumental}
                   onCheckedChange={(checked) => store.setInstrumental(checked as boolean)}
+                  disabled={store.isGenerating}
                 />
                 <Label htmlFor="instrumental">Instrumental (no vocals)</Label>
               </div>
@@ -181,7 +267,11 @@ export function GenerationPanel() {
               {!store.instrumental && (
                 <div className="space-y-2">
                   <Label htmlFor="vocalLanguage">Vocal Language</Label>
-                  <Select value={store.vocalLanguage} onValueChange={store.setVocalLanguage}>
+                  <Select 
+                    value={store.vocalLanguage} 
+                    onValueChange={store.setVocalLanguage}
+                    disabled={store.isGenerating}
+                  >
                     <SelectTrigger id="vocalLanguage">
                       <SelectValue />
                     </SelectTrigger>
@@ -229,6 +319,7 @@ export function GenerationPanel() {
                   value={store.prompt}
                   onChange={(e) => store.setPrompt(e.target.value)}
                   rows={3}
+                  disabled={store.isGenerating}
                 />
               </div>
 
@@ -240,6 +331,7 @@ export function GenerationPanel() {
                   value={store.lyrics}
                   onChange={(e) => store.setLyrics(e.target.value)}
                   rows={6}
+                  disabled={store.isGenerating}
                 />
               </div>
 
@@ -253,6 +345,7 @@ export function GenerationPanel() {
                     onChange={(e) => store.setBPM(Number(e.target.value))}
                     min={0}
                     max={300}
+                    disabled={store.isGenerating}
                   />
                 </div>
 
@@ -265,6 +358,7 @@ export function GenerationPanel() {
                     onChange={(e) => store.setDuration(Number(e.target.value))}
                     min={-1}
                     max={300}
+                    disabled={store.isGenerating}
                   />
                 </div>
               </div>
@@ -277,12 +371,17 @@ export function GenerationPanel() {
                     placeholder="e.g., C major, A minor"
                     value={store.keySignature}
                     onChange={(e) => store.setKeySignature(e.target.value)}
+                    disabled={store.isGenerating}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="timeSig">Time Signature</Label>
-                  <Select value={store.timeSignature} onValueChange={store.setTimeSignature}>
+                  <Select 
+                    value={store.timeSignature} 
+                    onValueChange={store.setTimeSignature}
+                    disabled={store.isGenerating}
+                  >
                     <SelectTrigger id="timeSig">
                       <SelectValue placeholder="Auto" />
                     </SelectTrigger>
@@ -334,6 +433,7 @@ export function GenerationPanel() {
                     min={0}
                     max={2}
                     step={0.05}
+                    disabled={store.isGenerating}
                   />
                 </div>
 
@@ -347,6 +447,7 @@ export function GenerationPanel() {
                     min={0}
                     max={100}
                     step={1}
+                    disabled={store.isGenerating}
                   />
                 </div>
 
@@ -360,6 +461,7 @@ export function GenerationPanel() {
                     min={0}
                     max={1}
                     step={0.05}
+                    disabled={store.isGenerating}
                   />
                 </div>
 
@@ -368,6 +470,7 @@ export function GenerationPanel() {
                     id="thinking"
                     checked={store.thinking}
                     onCheckedChange={(checked) => store.setThinking(checked as boolean)}
+                    disabled={store.isGenerating}
                   />
                   <Label htmlFor="thinking">Enable extended thinking mode</Label>
                 </div>
@@ -375,27 +478,82 @@ export function GenerationPanel() {
             </AccordionItem>
           </Accordion>
 
-          {store.generationStatus && (
-            <div className="mt-4 p-4 bg-muted rounded-lg">
-              <p className="text-sm font-medium">{store.generationStatus}</p>
-            </div>
+          {/* Progress Display */}
+          {store.isGenerating && (
+            <Card className="mt-6 border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20">
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    {getStageIcon()}
+                    <div className="flex-1">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium">{progressState.message}</span>
+                        <span className="text-xs text-muted-foreground">{progressState.progress}%</span>
+                      </div>
+                      <Progress 
+                        value={progressState.progress} 
+                        className="h-2"
+                      />
+                      {progressState.details && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {progressState.details}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Animated dots */}
+                  <div className="flex justify-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span>This may take a few minutes...</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Status Message */}
+          {!store.isGenerating && store.generationStatus && (
+            <Card className={`mt-6 ${
+              progressState.stage === 'complete' 
+                ? 'border-green-500/50 bg-green-50/50 dark:bg-green-950/20' 
+                : progressState.stage === 'error'
+                ? 'border-red-500/50 bg-red-50/50 dark:bg-red-950/20'
+                : 'border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20'
+            }`}>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  {getStageIcon()}
+                  <p className="text-sm font-medium">{store.generationStatus}</p>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {store.generatedAudios.length > 0 && (
             <div className="mt-6 space-y-4">
-              <h3 className="font-semibold">Generated Music</h3>
+              <h3 className="font-semibold flex items-center gap-2">
+                <Music className="h-4 w-4" />
+                Generated Music
+              </h3>
               <div className="grid gap-4">
                 {store.generatedAudios.map((audio, idx) => (
                   <Card key={idx}>
                     <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium">Sample {audio.index + 1}</span>
                         <Button variant="outline" size="sm" className="gap-2">
                           <Download className="h-4 w-4" />
                           Download
                         </Button>
                       </div>
-                      <audio controls src={audio.url} className="w-full mt-2" />
+                      <audio controls src={audio.url} className="w-full" />
                     </CardContent>
                   </Card>
                 ))}
