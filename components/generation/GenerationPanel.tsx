@@ -14,9 +14,9 @@ import {
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, Music, Sparkles, ExternalLink } from 'lucide-react'
-import { generationAPI } from '@/lib/api/client'
+import { Loader2, Music, Sparkles, Download } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useMusicGeneration } from '@/hooks/useMusicGeneration'
 
 export function GenerationPanel() {
   const [description, setDescription] = useState('')
@@ -25,41 +25,25 @@ export function GenerationPanel() {
   const [temperature, setTemperature] = useState(0.85)
   const [topK, setTopK] = useState(0)
   const [topP, setTopP] = useState(0.9)
-  const [thinking, setThinking] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<any>(null)
+
+  const { generate, isGenerating, progress, result, error } = useMusicGeneration()
 
   const handleGenerate = async () => {
     if (!description.trim()) {
-      setError('Please enter a song description')
       return
     }
 
-    setIsGenerating(true)
-    setError(null)
-    setResult(null)
-
     try {
-      console.log('🎵 Starting generation...')
-      const response = await generationAPI.generateSimple(
+      await generate({
         description,
         instrumental,
         vocalLanguage,
         temperature,
         topK,
         topP,
-        thinking
-      )
-
-      console.log('✅ Generation response:', response)
-      setResult(response)
-
-    } catch (err: any) {
-      console.error('❌ Generation failed:', err)
-      setError(err.message || 'Failed to generate music metadata')
-    } finally {
-      setIsGenerating(false)
+      })
+    } catch (err) {
+      console.error('Generation failed:', err)
     }
   }
 
@@ -69,10 +53,10 @@ export function GenerationPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Music className="h-5 w-5" />
-            Simple Mode Generation
+            Music Generation
           </CardTitle>
           <CardDescription>
-            Describe your music and AI will generate detailed metadata
+            Describe your music and AI will generate complete audio files
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -81,7 +65,7 @@ export function GenerationPanel() {
             <Label htmlFor="description">Song Description</Label>
             <Textarea
               id="description"
-              placeholder="e.g., upbeat pop song with catchy melody"
+              placeholder="e.g., upbeat pop song with catchy melody and electronic beats"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -116,6 +100,7 @@ export function GenerationPanel() {
                   <SelectItem value="chinese">Chinese</SelectItem>
                   <SelectItem value="japanese">Japanese</SelectItem>
                   <SelectItem value="korean">Korean</SelectItem>
+                  <SelectItem value="unknown">Unknown/Auto-detect</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -169,16 +154,6 @@ export function GenerationPanel() {
                 step={0.05}
               />
             </div>
-
-            {/* Thinking Mode */}
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="thinking"
-                checked={thinking}
-                onCheckedChange={(checked) => setThinking(checked as boolean)}
-              />
-              <Label htmlFor="thinking">Enable Thinking Mode (slower but more creative)</Label>
-            </div>
           </div>
 
           {/* Generate Button */}
@@ -191,15 +166,22 @@ export function GenerationPanel() {
             {isGenerating ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Generating Metadata...
+                {progress || 'Generating...'}
               </>
             ) : (
               <>
                 <Sparkles className="mr-2 h-5 w-5" />
-                Generate Music Metadata
+                Generate Music
               </>
             )}
           </Button>
+
+          {/* Progress */}
+          {isGenerating && progress && (
+            <Alert>
+              <AlertDescription>{progress}</AlertDescription>
+            </Alert>
+          )}
 
           {/* Error */}
           {error && (
@@ -212,25 +194,51 @@ export function GenerationPanel() {
           {result && (
             <Card className="bg-muted/50">
               <CardHeader>
-                <CardTitle className="text-lg">✅ Metadata Generated!</CardTitle>
+                <CardTitle className="text-lg">✅ Music Generated!</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Audio Players */}
+                {result.audioUrls && result.audioUrls.length > 0 && (
+                  <div className="space-y-3">
+                    <Label className="font-semibold">Generated Audio Files:</Label>
+                    {result.audioUrls.map((url: string, idx: number) => (
+                      <div key={idx} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Variation {idx + 1}</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(url, '_blank')}
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download
+                          </Button>
+                        </div>
+                        <audio controls className="w-full">
+                          <source src={url} type="audio/flac" />
+                          Your browser does not support the audio element.
+                        </audio>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Metadata Display */}
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-sm pt-4 border-t">
                   <div>
-                    <span className="font-semibold">BPM:</span> {result.bpm}
+                    <span className="font-semibold">BPM:</span> {result.metadata.bpm}
                   </div>
                   <div>
-                    <span className="font-semibold">Duration:</span> {result.duration}s
+                    <span className="font-semibold">Duration:</span> {result.metadata.duration}s
                   </div>
                   <div>
-                    <span className="font-semibold">Key:</span> {result.key}
+                    <span className="font-semibold">Key:</span> {result.metadata.keySignature}
                   </div>
                   <div>
-                    <span className="font-semibold">Time Signature:</span> {result.timeSig}
+                    <span className="font-semibold">Time Signature:</span> {result.metadata.timeSignature}
                   </div>
                   <div className="col-span-2">
-                    <span className="font-semibold">Language:</span> {result.vocalLanguage}
+                    <span className="font-semibold">Language:</span> {result.metadata.vocalLanguage}
                   </div>
                 </div>
 
@@ -238,39 +246,19 @@ export function GenerationPanel() {
                 <div className="space-y-2">
                   <Label className="font-semibold">Generated Prompt:</Label>
                   <p className="text-sm text-muted-foreground bg-background p-3 rounded-md">
-                    {result.prompt}
+                    {result.metadata.prompt}
                   </p>
                 </div>
 
                 {/* Lyrics */}
-                <div className="space-y-2">
-                  <Label className="font-semibold">Lyrics:</Label>
-                  <pre className="text-sm text-muted-foreground bg-background p-3 rounded-md whitespace-pre-wrap font-mono">
-                    {result.lyrics}
-                  </pre>
-                </div>
-
-                {/* Audio Generation Link */}
-                <Alert>
-                  <Music className="h-4 w-4" />
-                  <AlertDescription className="ml-2">
-                    <div className="space-y-2">
-                      <p className="font-semibold">Ready to generate audio?</p>
-                      <p className="text-sm">
-                        Visit the HuggingFace Space to generate actual audio files with these settings.
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => window.open(result.audioGenerationURL, '_blank')}
-                      >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Open in HuggingFace Space
-                      </Button>
-                    </div>
-                  </AlertDescription>
-                </Alert>
+                {result.metadata.lyrics && (
+                  <div className="space-y-2">
+                    <Label className="font-semibold">Lyrics:</Label>
+                    <pre className="text-sm text-muted-foreground bg-background p-3 rounded-md whitespace-pre-wrap font-mono">
+                      {result.metadata.lyrics}
+                    </pre>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
