@@ -126,7 +126,7 @@ export async function callGradioAPI(
     console.log(`🚀 API call: ${endpoint}`, { 
       useProxy: API_CONFIG.useProxy && !useDirectAPI, 
       useDirectAPI,
-      data 
+      dataLength: data.length 
     })
 
     // POST request to initiate the call
@@ -138,13 +138,26 @@ export async function callGradioAPI(
 
     if (!postResponse.ok) {
       const errorText = await postResponse.text()
+      console.error('❌ API call failed:', errorText)
       throw new Error(`API call failed: ${postResponse.statusText} - ${errorText}`)
     }
 
-    const postData = await postResponse.json()
+    // Try to parse JSON, but handle text responses too
+    const contentType = postResponse.headers.get('content-type')
+    let postData: any
+    
+    if (contentType?.includes('application/json')) {
+      postData = await postResponse.json()
+    } else {
+      const text = await postResponse.text()
+      console.error('❌ Non-JSON response:', text)
+      throw new Error(`API returned non-JSON response: ${text.substring(0, 200)}`)
+    }
+
     const eventId = postData.event_id
 
     if (!eventId) {
+      console.error('❌ No event_id in response:', postData)
       throw new Error('No event_id received from API')
     }
 
@@ -152,7 +165,7 @@ export async function callGradioAPI(
 
     // Poll for results
     const result = await pollForResult(endpoint, eventId, onProgress, useDirectAPI)
-    console.log(`✅ API call complete: ${endpoint}`, result)
+    console.log(`✅ API call complete: ${endpoint}`)
     return result
   } catch (error) {
     console.error(`❌ API call failed: ${endpoint}`, error)
