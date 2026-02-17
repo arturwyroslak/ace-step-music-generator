@@ -50,8 +50,8 @@ export function useMusicGeneration() {
 
       console.log('🎵 Time signature fixed:', metadataResult.timeSig, '→', timeSignature)
 
-      // STEP 2: Generate audio with lambda_13 using the metadata
-      console.log('🚀 Step 2: Generating audio...')
+      // STEP 2: Generate audio with generation_wrapper using ALL parameters
+      console.log('🚀 Step 2: Generating audio with full API...')
       const estimatedMinutes = Math.round(metadataResult.duration * 0.15)
       setProgress(`🎼 Generating audio... (estimated ${estimatedMinutes} min)`)
 
@@ -63,7 +63,7 @@ export function useMusicGeneration() {
         setProgress(`🎼 Generating ${metadataResult.duration}s audio... ${elapsed}/${estimatedMinutes} min elapsed`)
       }, 5000)
 
-      const audioResult = await generationAPI.generateAudioSimple(
+      const audioResult = await generationAPI.generateAudioFull(
         metadataResult.prompt,
         metadataResult.lyrics,
         metadataResult.bpm,
@@ -89,13 +89,16 @@ export function useMusicGeneration() {
 
       console.log('✅ Audio generated:', audioResult)
 
-      // lambda_13 returns array with audio files and metadata
-      // Based on docs: returns multiple elements including audio files
+      // generation_wrapper returns 38 elements:
+      // 0-7: Audio files (8 samples)
+      // 8: Download file
+      // 9: Generation details markdown
+      // 10: Status text
+      const audioFiles = audioResult.slice(0, 8).filter((item: any) => item?.url)
+
       const finalResult: GenerationResult = {
-        audioUrl: audioResult[0]?.url || null, // First audio file
-        audioUrls: audioResult
-          .filter((item: any) => item?.url)
-          .map((item: any) => item.url), // All audio files
+        audioUrl: audioFiles[0]?.url || null,
+        audioUrls: audioFiles.map((item: any) => item.url),
         metadata: {
           prompt: metadataResult.prompt,
           lyrics: metadataResult.lyrics,
