@@ -192,8 +192,6 @@ export const modelAPI = {
 // Generation APIs
 export const generationAPI = {
   // Simple mode generation - generates METADATA only (fast)
-  // For actual audio generation, user needs to visit the HuggingFace Space
-  // or we need to implement a separate audio generation endpoint
   generateSimple: async (
     description: string,
     instrumental: boolean,
@@ -211,10 +209,10 @@ export const generationAPI = {
       onProgress
     )
 
-    // lambda_12 returns 16 elements:
+    // lambda_12 returns 11 elements:
     // [0] prompt, [1] lyrics, [2] bpm, [3] duration, [4] key, 
     // [5] vocalOut, [6] vocalOpt, [7] timeSig, [8] instrumental, 
-    // [9] thinking, [10] status, [11-15] UI updates
+    // [9] thinking, [10] status
     const prompt = metadata[0] || ''
     const lyrics = metadata[1] || ''
     const bpm = metadata[2] || 0
@@ -223,8 +221,8 @@ export const generationAPI = {
     const vocalOut = metadata[5] || 'unknown'
     const vocalOpt = metadata[6] || 'unknown'
     const timeSig = metadata[7] || '4/4'
-    const isInstrumental = metadata[8] || false  // FIXED: renamed to avoid shadowing
-    const status = metadata[15] || '✅ Metadata generated'
+    const isInstrumental = metadata[8] || false
+    const status = metadata[10] || '✅ Metadata generated'
 
     console.log('✅ Metadata generated:', { 
       prompt: prompt.substring(0, 50) + '...', 
@@ -236,21 +234,121 @@ export const generationAPI = {
     })
 
     return {
-      metadata,      // Original metadata from lambda_12
+      metadata,
       prompt,
       lyrics,
       bpm,
       duration,
       key,
       timeSig,
-      instrumental: isInstrumental,  // FIXED: use renamed variable
+      instrumental: isInstrumental,
       vocalLanguage: vocalOut,
       status,
-      // Note: No audio files yet - user needs to click "Generate Audio" button
-      // or visit the HuggingFace Space directly
-      audios: [],
-      audioGenerationURL: 'https://huggingface.co/spaces/Ace-Step/ace-step-v1-5',
     }
+  },
+
+  // Generate actual audio files from metadata (lambda_13)
+  // This is the MAIN generation endpoint that produces audio files
+  generateAudio: async (
+    prompt: string,
+    lyrics: string,
+    bpm: number,
+    keySignature: string,
+    vocalLanguage: string,
+    timeSignature: string,
+    duration: number,
+    batchSize: number,
+    thinking: boolean,
+    audioDuration: number,
+    srcAudio: any,
+    startTime: number,
+    numSegments: number,
+    refAudio: any,
+    contextPrompt: string,
+    contextStart: number,
+    contextDuration: number,
+    maskPrompt: string,
+    maskStart: number,
+    mode: string,
+    useHybridCFG: boolean,
+    cfgScale: number,
+    ditSteps: number,
+    inferenceMethod: string,
+    customTimesteps: string,
+    audioFormat: string,
+    temperature: number,
+    thinking2: boolean,
+    lmCfgScale: number,
+    topK: number,
+    topP: number,
+    negativePrompt: string,
+    useAudioLoRA: boolean,
+    useTextLoRA: boolean,
+    useAudioLM: boolean,
+    thinking3: boolean,
+    genScores: boolean,
+    genLyrics: boolean,
+    genNextBatch: boolean,
+    qualityScore: number,
+    randomSegments: number,
+    maskInstrument: string,
+    maskInstruments: any,
+    onProgress?: (event: GradioEvent) => void
+  ) => {
+    console.log('🎼 Generating audio with lambda_13...')
+    const result = await callGradioAPI(
+      'lambda_13',
+      [
+        prompt,
+        lyrics,
+        bpm,
+        keySignature,
+        vocalLanguage,
+        timeSignature,
+        duration,
+        batchSize,
+        thinking,
+        audioDuration,
+        srcAudio,
+        startTime,
+        numSegments,
+        refAudio,
+        contextPrompt,
+        contextStart,
+        contextDuration,
+        maskPrompt,
+        maskStart,
+        mode,
+        useHybridCFG,
+        cfgScale,
+        ditSteps,
+        inferenceMethod,
+        customTimesteps,
+        audioFormat,
+        temperature,
+        thinking2,
+        lmCfgScale,
+        topK,
+        topP,
+        negativePrompt,
+        useAudioLoRA,
+        useTextLoRA,
+        useAudioLM,
+        thinking3,
+        genScores,
+        genLyrics,
+        genNextBatch,
+        qualityScore,
+        randomSegments,
+        maskInstrument,
+        maskInstruments,
+      ],
+      onProgress,
+      true // Use direct API for long audio generation
+    )
+
+    console.log('✅ Audio generation complete:', result)
+    return result
   },
 
   // Custom mode generation
