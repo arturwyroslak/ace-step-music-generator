@@ -41,6 +41,15 @@ export function useMusicGeneration() {
 
       console.log('✅ Metadata generated:', metadataResult)
 
+      // Fix time signature format - ensure it's always X/Y
+      let timeSignature = metadataResult.timeSig
+      if (timeSignature && !timeSignature.includes('/')) {
+        // If it's just a number like "4", convert to "4/4"
+        timeSignature = `${timeSignature}/4`
+      }
+
+      console.log('🎵 Time signature fixed:', metadataResult.timeSig, '→', timeSignature)
+
       // STEP 2: Generate audio with lambda_13 using the metadata
       console.log('🚀 Step 2: Generating audio...')
       const estimatedMinutes = Math.round(metadataResult.duration * 0.15)
@@ -60,7 +69,7 @@ export function useMusicGeneration() {
         metadataResult.bpm,
         metadataResult.key,
         metadataResult.vocalLanguage,
-        metadataResult.timeSig,
+        timeSignature, // Use fixed time signature
         metadataResult.duration,
         (event: GradioEvent) => {
           console.log('📡 Audio event:', event)
@@ -93,7 +102,7 @@ export function useMusicGeneration() {
           bpm: metadataResult.bpm,
           duration: metadataResult.duration,
           keySignature: metadataResult.key,
-          timeSignature: metadataResult.timeSig,
+          timeSignature,
           vocalLanguage: metadataResult.vocalLanguage,
           instrumental: metadataResult.instrumental,
         },
