@@ -280,8 +280,8 @@ export const generationAPI = {
     }
   },
 
-  // Simplified audio generation - ONLY ESSENTIAL PARAMETERS
-  generateAudioSimple: async (
+  // FULL GENERATION using generation_wrapper with ALL 49 parameters
+  generateAudioFull: async (
     prompt: string,
     lyrics: string,
     bpm: number,
@@ -291,159 +291,89 @@ export const generationAPI = {
     duration: number,
     onProgress?: (event: GradioEvent) => void
   ) => {
-    console.log('🎼 Generating audio with lambda_13...')
-    console.log(`⏱️ Expected duration: ~${Math.round(duration * 0.15)} minutes for ${duration}s of audio`)
+    console.log('🎼 Generating audio with generation_wrapper...')
+    console.log('⏱️ Expected duration: ~5 minutes for 30s of audio')
     console.log('📋 Parameters:', { 
       prompt: prompt.substring(0, 50), 
       bpm, 
-      keySignature,
+      keySignature, 
       vocalLanguage,
       timeSignature,
       duration 
     })
-    
-    // Match the exact order and types from HuggingFace documentation
-    const result = await callGradioAPI(
-      'lambda_13',
-      [
-        prompt,                    // 0: prompt (string)
-        lyrics,                    // 1: lyrics (string)
-        bpm,                       // 2: bpm (number)
-        keySignature,              // 3: key_signature (string)
-        vocalLanguage,             // 4: vocal_language (string)
-        timeSignature,             // 5: time_signature (string)
-        duration,                  // 6: duration (number)
-        1,                         // 7: batch_size (1 for faster generation)
-        false,                     // 8: thinking (boolean)
-        duration,                  // 9: audio_duration (number)
-        null,                      // 10: src_audio (null)
-        0,                         // 11: start_time (number)
-        1,                         // 12: num_segments (number)
-        null,                      // 13: ref_audio (null)
-        '',                        // 14: context_prompt (string)
-        0,                         // 15: context_start (number)
-        10,                        // 16: context_duration (number)
-        '',                        // 17: mask_prompt (string)
-        0,                         // 18: mask_start (number)
-        'text2music',              // 19: mode (string)
-        true,                      // 20: use_hybrid_cfg (boolean)
-        3.0,                       // 21: cfg_scale (number)
-        8,                         // 22: dit_steps (number)
-        'single_step',             // 23: inference_method (string)
-        '',                        // 24: custom_timesteps (string)
-        'flac',                    // 25: audio_format (string)
-        0.85,                      // 26: temperature (number)
-        false,                     // 27: thinking2 (boolean)
-        1.5,                       // 28: lm_cfg_scale (number)
-        0,                         // 29: top_k (number)
-        0.9,                       // 30: top_p (number)
-        '',                        // 31: negative_prompt (string)
-        false,                     // 32: use_audio_lora (boolean)
-        false,                     // 33: use_text_lora (boolean)
-        true,                      // 34: use_audio_lm (boolean)
-        false,                     // 35: thinking3 (boolean)
-        false,                     // 36: gen_scores (boolean)
-        true,                      // 37: gen_lyrics (boolean)
-        false,                     // 38: gen_next_batch (boolean)
-        0,                         // 39: quality_score (number)
-        0,                         // 40: random_segments (number)
-        '',                        // 41: mask_instrument (string)
-        [],                        // 42: mask_instruments (array)
-      ],
+
+    // Build ALL 49 parameters for generation_wrapper according to docs
+    const params = [
+      'acestep-v1.5-turbo',     // 0: models (default model)
+      'simple',                  // 1: mode (simple/custom/cover/repaint)
+      prompt,                    // 2: description (song description for simple mode)
+      vocalLanguage,            // 3: vocal language optional
+      prompt,                    // 4: prompt text
+      lyrics,                    // 5: lyrics
+      bpm,                       // 6: BPM
+      keySignature,             // 7: key signature
+      timeSignature,            // 8: time signature
+      vocalLanguage,            // 9: vocal language
+      8,                         // 10: DiT inference steps
+      7,                         // 11: CFG scale
+      true,                      // 12: random seed
+      '-1',                      // 13: seed (string)
+      null,                      // 14: reference audio
+      duration,                  // 15: audio duration
+      1,                         // 16: batch size
+      null,                      // 17: source audio
+      '',                        // 18: audio codes
+      0,                         // 19: start seconds
+      -1,                        // 20: end seconds
+      '',                        // 21: repaint prompt
+      1,                         // 22: strength slider
+      'text2music',              // 23: mode dropdown
+      false,                     // 24: checkbox 157
+      0,                         // 25: slider 158
+      1,                         // 26: slider 159
+      3,                         // 27: shift
+      'ode',                     // 28: inference method
+      '',                        // 29: custom timesteps
+      'mp3',                     // 30: audio format
+      0.85,                      // 31: LM temperature
+      false,                     // 32: thinking
+      2,                         // 33: LM CFG scale
+      0,                         // 34: LM top-K
+      0.9,                       // 35: LM top-P
+      'NO USER INPUT',          // 36: LM negative prompt
+      true,                      // 37: checkbox 160
+      true,                      // 38: checkbox 161
+      true,                      // 39: checkbox 162
+      false,                     // 40: (missing in docs but needed)
+      false,                     // 41: checkbox 163
+      false,                     // 42: checkbox 164
+      false,                     // 43: get scores
+      false,                     // 44: get LRC
+      0.5,                       // 45: quality slider
+      8,                         // 46: number 165
+      'woodwinds',               // 47: dropdown 154
+      [],                        // 48: checkboxgroup 155
+      false,                     // 49: checkbox 167 (auto-gen batches)
+    ]
+
+    console.log('🚀 Calling generation_wrapper with 49 parameters...')
+
+    const audioResult = await callGradioAPI(
+      'generation_wrapper',
+      params,
       onProgress,
-      true
+      true // use direct API
     )
 
-    console.log('✅ Audio generation complete:', result)
-    return result
+    console.log('✅ Audio generated, result elements:', audioResult.length)
+
+    // generation_wrapper returns 38 elements:
+    // 0-7: Audio files
+    // 8: Download file
+    // 9: Generation details (markdown)
+    // 10: Generation status
+    // etc.
+
+    return audioResult
   },
-
-  // Custom mode generation
-  generateCustom: (
-    prompt: string,
-    lyrics: string,
-    bpm: number,
-    duration: number,
-    keySignature: string,
-    timeSignature: string,
-    temperature: number,
-    topK: number,
-    topP: number,
-    thinking: boolean,
-    onProgress?: (event: GradioEvent) => void
-  ) => callGradioAPI(
-    'lambda_10',
-    [prompt, lyrics, bpm, duration, keySignature, timeSignature, temperature, topK, topP, thinking],
-    onProgress
-  ),
-
-  // Transcribe audio codes
-  transcribeAudio: (
-    audioCodes: string,
-    thinking: boolean,
-    onProgress?: (event: GradioEvent) => void
-  ) => callGradioAPI('lambda_9', [audioCodes, thinking], onProgress),
-
-  // Load random example
-  loadRandomExample: () => callGradioAPI('load_random_simple_description'),
-}
-
-// Dataset APIs
-export const datasetAPI = {
-  saveDataset: (savePath: string, datasetName: string) => 
-    callGradioAPI('save_dataset', [savePath, datasetName]),
-
-  loadDataset: (datasetPath: string) => 
-    callGradioAPI('load_existing_dataset_for_preprocess_1', [datasetPath]),
-
-  preprocessDataset: (tensorOutputDir: string, onProgress?: (event: GradioEvent) => void) => 
-    callGradioAPI('lambda_33', [tensorOutputDir], onProgress),
-}
-
-// Training APIs
-export const trainingAPI = {
-  loadTrainingDataset: (tensorDir: string) => 
-    callGradioAPI('load_training_dataset', [tensorDir]),
-
-  startTraining: (
-    tensorDir: string,
-    loraRank: number,
-    loraAlpha: number,
-    loraDropout: number,
-    learningRate: number,
-    maxEpochs: number,
-    batchSize: number,
-    gradAccum: number,
-    saveEveryN: number,
-    shift: number,
-    seed: number,
-    outputDir: string,
-    onProgress?: (event: GradioEvent) => void
-  ) => callGradioAPI(
-    'training_wrapper',
-    [
-      tensorDir,
-      loraRank,
-      loraAlpha,
-      loraDropout,
-      learningRate,
-      maxEpochs,
-      batchSize,
-      gradAccum,
-      saveEveryN,
-      shift,
-      seed,
-      outputDir,
-    ],
-    onProgress
-  ),
-
-  stopTraining: () => callGradioAPI('stop_training'),
-}
-
-// Metadata and UI helper APIs
-export const helperAPI = {
-  loadMetadata: (file: any) => callGradioAPI('load_metadata', [file]),
-  updateModelTypeSettings: (configPath: string) => 
-    callGradioAPI('update_model_type_settings', [configPath]),
 }
