@@ -1,8 +1,9 @@
 // ACE-STEP API Client
 // Handles all 99 API endpoints with proper typing and event streaming
 
-const API_BASE = 'https://ace-step-ace-step-v1-5.hf.space'
-const GRADIO_API = `${API_BASE}/gradio_api`
+// Use Next.js proxy to avoid CORS issues
+const USE_PROXY = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+const API_BASE = USE_PROXY ? '/api/gradio' : 'https://ace-step-ace-step-v1-5.hf.space/gradio_api'
 
 export interface GradioEventData {
   data: any[]
@@ -11,6 +12,9 @@ export interface GradioEventData {
 export interface GradioEvent {
   event: string
   data?: any
+  msg?: string
+  output?: any
+  error?: string
 }
 
 // Polling fallback when EventSource fails (CORS issues)
@@ -24,7 +28,7 @@ async function pollForResult(
 
   while (attempts < maxAttempts) {
     try {
-      const response = await fetch(`${GRADIO_API}/call/${endpoint}/${eventId}`)
+      const response = await fetch(`${API_BASE}/call/${endpoint}/${eventId}`)
       
       if (!response.ok) {
         throw new Error(`Polling failed: ${response.statusText}`)
@@ -75,7 +79,7 @@ export async function callGradioAPI(
 ): Promise<any> {
   try {
     // POST request to initiate the call
-    const postResponse = await fetch(`${GRADIO_API}/call/${endpoint}`, {
+    const postResponse = await fetch(`${API_BASE}/call/${endpoint}`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -84,7 +88,8 @@ export async function callGradioAPI(
     })
 
     if (!postResponse.ok) {
-      throw new Error(`API call failed: ${postResponse.statusText}`)
+      const errorText = await postResponse.text()
+      throw new Error(`API call failed: ${postResponse.statusText} - ${errorText}`)
     }
 
     const postData = await postResponse.json()
@@ -93,6 +98,8 @@ export async function callGradioAPI(
     if (!eventId) {
       throw new Error('No event_id received from API')
     }
+
+    console.log(`API call started: ${endpoint}, event_id: ${eventId}`)
 
     // Try EventSource first, fall back to polling on error
     return new Promise((resolve, reject) => {
@@ -107,7 +114,7 @@ export async function callGradioAPI(
       // Try to use EventSource
       try {
         const eventSource = new EventSource(
-          `${GRADIO_API}/call/${endpoint}/${eventId}`
+          `${API_BASE}/call/${endpoint}/${eventId}`
         )
 
         let hasError = false
@@ -115,6 +122,8 @@ export async function callGradioAPI(
         eventSource.onmessage = (event) => {
           try {
             const parsed = JSON.parse(event.data)
+            
+            console.log('Event received:', parsed.msg || parsed.event, parsed)
             
             if (onProgress && !resolved) {
               onProgress(parsed)
@@ -126,6 +135,7 @@ export async function callGradioAPI(
                 resolved = true
                 clearTimeout(timeout)
                 eventSource.close()
+                console.log('Process completed:', parsed.output)
                 resolve(parsed.output?.data || parsed.output)
               }
             } else if (parsed.msg === 'error') {
@@ -133,6 +143,7 @@ export async function callGradioAPI(
                 resolved = true
                 clearTimeout(timeout)
                 eventSource.close()
+                console.error('API error:', parsed.error)
                 reject(new Error(parsed.error || 'API error occurred'))
               }
             }
@@ -142,6 +153,7 @@ export async function callGradioAPI(
         }
 
         eventSource.onerror = (error) => {
+          console.error('EventSource error:', error)
           if (!hasError && !resolved) {
             hasError = true
             eventSource.close()
@@ -188,6 +200,7 @@ export async function callGradioAPI(
       }
     })
   } catch (error) {
+    console.error('API call error:', error)
     throw error
   }
 }
