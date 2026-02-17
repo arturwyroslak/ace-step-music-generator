@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { generationAPI, type GradioEvent } from '@/lib/api/client'
 import type { MusicGenerationParams, GenerationResult } from '@/lib/types'
 
@@ -9,11 +9,14 @@ export function useMusicGeneration() {
   const [progress, setProgress] = useState<string>('')
   const [result, setResult] = useState<GenerationResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const pollCountRef = useRef(0)
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const generate = useCallback(async (params: MusicGenerationParams) => {
     setIsGenerating(true)
     setError(null)
     setProgress('Starting generation...')
+    pollCountRef.current = 0
 
     try {
       // STEP 1: Generate metadata with lambda_12
@@ -40,7 +43,16 @@ export function useMusicGeneration() {
 
       // STEP 2: Generate audio with lambda_13 using the metadata
       console.log('🚀 Step 2: Generating audio...')
-      setProgress('🎼 Generating audio files...')
+      const estimatedMinutes = Math.round(metadataResult.duration * 0.15)
+      setProgress(`🎼 Generating audio... (estimated ${estimatedMinutes} min)`)
+
+      // Start a timer to update progress every 5 seconds
+      pollCountRef.current = 0
+      pollTimerRef.current = setInterval(() => {
+        pollCountRef.current += 1
+        const elapsed = Math.round(pollCountRef.current * 5 / 60 * 10) / 10 // minutes with 1 decimal
+        setProgress(`🎼 Generating ${metadataResult.duration}s audio... ${elapsed}/${estimatedMinutes} min elapsed`)
+      }, 5000)
 
       const audioResult = await generationAPI.generateAudioSimple(
         metadataResult.prompt,
@@ -59,6 +71,12 @@ export function useMusicGeneration() {
           }
         }
       )
+
+      // Clear the timer
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
+      }
 
       console.log('✅ Audio generated:', audioResult)
 
@@ -92,6 +110,11 @@ export function useMusicGeneration() {
       throw err
     } finally {
       setIsGenerating(false)
+      // Clean up timer
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
+      }
     }
   }, [])
 
@@ -99,6 +122,10 @@ export function useMusicGeneration() {
     setResult(null)
     setError(null)
     setProgress('')
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
   }, [])
 
   return {
