@@ -16,7 +16,6 @@ import { Slider } from '@/components/ui/slider'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, Music, Sparkles, ExternalLink } from 'lucide-react'
 import { generationAPI } from '@/lib/api/client'
-import { useGenerationStore } from '@/lib/store/generation'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export function GenerationPanel() {
@@ -30,8 +29,6 @@ export function GenerationPanel() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<any>(null)
-
-  const addAudio = useGenerationStore((state) => state.addAudio)
 
   const handleGenerate = async () => {
     if (!description.trim()) {
@@ -57,21 +54,6 @@ export function GenerationPanel() {
 
       console.log('✅ Generation response:', response)
       setResult(response)
-
-      // Add to store (even though no audio yet)
-      addAudio({
-        id: Date.now().toString(),
-        description,
-        prompt: response.prompt,
-        lyrics: response.lyrics,
-        bpm: response.bpm,
-        duration: response.duration,
-        key: response.key,
-        timeSignature: response.timeSig,
-        instrumental: response.instrumental,
-        vocalLanguage: response.vocalLanguage,
-        createdAt: new Date(),
-      })
 
     } catch (err: any) {
       console.error('❌ Generation failed:', err)
