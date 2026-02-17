@@ -187,20 +187,10 @@ export const modelAPI = {
 
 // Generation APIs
 export const generationAPI = {
-  // Simple mode generation
-  // ACTUALLY returns 16 elements based on real API response:
-  // 0: Prompt/Caption
-  // 1: Lyrics
-  // 2: BPM
-  // 3: Duration
-  // 4: Key Signature
-  // 5: Vocal Language (output)
-  // 6: Vocal Language (optional)
-  // 7: Time Signature
-  // 8: Instrumental checkbox
-  // 9-14: UI update objects
-  // 15: Generation Status with metadata
-  generateSimple: (
+  // Simple mode generation with full workflow:
+  // 1. lambda_12: Generate metadata (prompt, lyrics, BPM, duration, etc.)
+  // 2. generationwrapper: Generate actual audio files using metadata
+  generateSimple: async (
     description: string,
     instrumental: boolean,
     vocalLanguage: string,
@@ -209,11 +199,115 @@ export const generationAPI = {
     topP: number,
     thinking: boolean,
     onProgress?: (event: GradioEvent) => void
-  ) => callGradioAPI(
-    'lambda_12',
-    [description, instrumental, vocalLanguage, temperature, topK, topP, thinking],
-    onProgress
-  ),
+  ) => {
+    // Step 1: Generate metadata with lambda_12
+    console.log('🎵 Step 1: Generating metadata with lambda_12...')
+    const metadata = await callGradioAPI(
+      'lambda_12',
+      [description, instrumental, vocalLanguage, temperature, topK, topP, thinking],
+      onProgress
+    )
+
+    // lambda_12 returns 16 elements:
+    // [0] prompt, [1] lyrics, [2] bpm, [3] duration, [4] key, 
+    // [5] vocalOut, [6] vocalOpt, [7] timeSig, [8] instrumental, 
+    // [9] thinking, [10] status, [11-15] UI updates
+    const prompt = metadata[0] || ''
+    const lyrics = metadata[1] || ''
+    const bpm = metadata[2] || 0
+    const duration = metadata[3] || 15
+    const key = metadata[4] || ''
+    const vocalOut = metadata[5] || 'unknown'
+    const timeSig = metadata[7] || '4/4'
+
+    console.log('✅ Metadata generated:', { prompt: prompt.substring(0, 50), lyrics, bpm, duration, key })
+
+    // Step 2: Generate audio with generationwrapper
+    console.log('🎵 Step 2: Generating audio with generationwrapper...')
+    
+    // generationwrapper accepts 49 parameters!
+    const audioResult = await callGradioAPI(
+      'generationwrapper',
+      [
+        'acestep-v1.5-turbo',  // 0: model
+        'simple',               // 1: generation mode
+        description,            // 2: song description (simple mode)
+        vocalLanguage,          // 3: vocal language optional
+        prompt,                 // 4: prompt (from lambda_12)
+        lyrics,                 // 5: lyrics (from lambda_12)
+        bpm,                    // 6: bpm
+        key,                    // 7: key signature
+        timeSig,                // 8: time signature
+        vocalOut,               // 9: vocal language
+        8,                      // 10: DiT inference steps
+        7,                      // 11: CFG scale
+        true,                   // 12: random seed
+        '-1',                   // 13: seed value
+        null,                   // 14: reference audio
+        duration,               // 15: duration
+        2,                      // 16: batch size (2 samples)
+        null,                   // 17: source audio
+        '',                     // 18: audio codes
+        0,                      // 19: start time
+        -1,                     // 20: end time
+        'Fill the audio semantic mask based on the given conditions', // 21: mask condition
+        1,                      // 22: strength
+        'text2music',           // 23: mode
+        false,                  // 24: use custom codes
+        0,                      // 25: guidance start
+        1,                      // 26: guidance end
+        3,                      // 27: shift
+        'ode',                  // 28: inference method
+        '',                     // 29: custom timesteps
+        'mp3',                  // 30: audio format
+        temperature,            // 31: LM temperature
+        thinking,               // 32: thinking mode
+        2,                      // 33: LM CFG scale
+        topK,                   // 34: LM top-K
+        topP,                   // 35: LM top-P
+        'NO USER INPUT',        // 36: LM negative prompt
+        true,                   // 37: use LM
+        true,                   // 38: use DiT
+        true,                   // 39: use vocals
+        false,                  // 40: (unknown param)
+        thinking,               // 41: extended thinking
+        false,                  // 42: get scores
+        false,                  // 43: get LRC
+        0.5,                    // 44: quality threshold
+        8,                      // 45: num samples
+        'woodwinds',            // 46: instrument type
+        '',                     // 47: custom param
+        false,                  // 48: debug mode
+      ],
+      onProgress
+    )
+
+    // generationwrapper returns 38 elements:
+    // [0-7]: Audio files (Generated Music Sample 1-8)
+    // [8]: All files download
+    // [9]: Generation details markdown
+    // [10]: Generation status
+    // [11]: Seed
+    // [12-19]: Quality scores
+    // [20-27]: LM codes
+    // [28-35]: Lyrics timestamps
+    // [36]: Current batch
+    // [37]: Next batch status
+
+    console.log('✅ Audio generated! Samples:', audioResult.slice(0, 8).filter(Boolean).length)
+
+    return {
+      metadata,      // Original metadata from lambda_12
+      audioResult,   // Full audio generation result
+      audios: audioResult.slice(0, 8).filter(Boolean), // First 8 = audio files
+      prompt,
+      lyrics,
+      bpm,
+      duration,
+      key,
+      timeSig,
+    }
+  },
 
   // Custom mode generation
   generateCustom: (
