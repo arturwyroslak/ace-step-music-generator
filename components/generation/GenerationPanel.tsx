@@ -98,8 +98,7 @@ export function GenerationPanel() {
         updateProgress
       )
 
-      console.log('🎵 Generation result:', result)
-      console.log('📊 Result length:', result?.length)
+      console.log('🎵 Full generation result:', result)
 
       setProgressState({
         stage: 'complete',
@@ -108,42 +107,41 @@ export function GenerationPanel() {
         details: 'Music created successfully',
       })
 
-      // Parse result - API returns 16 elements
-      // 0: Caption/Prompt, 1: Lyrics, 2: BPM, 3: Duration, 4: Key, 
-      // 5: Vocal Lang (out), 6: Vocal Lang (opt), 7: Time Sig, 8: Instrumental,
-      // 9-14: UI updates, 15: Status message
-      if (result && Array.isArray(result) && result.length >= 8) {
-        const caption = result[0] || ''
-        const lyrics = result[1] || ''
-        const bpm = result[2] || 0
-        const duration = result[3] || 0
-        const key = result[4] || ''
-        const vocalOut = result[5] || ''
-        const vocalOpt = result[6] || ''
-        const timeSig = result[7] || ''
-        const status = result[15] || '✅ Generation complete!'
+      // Update store with metadata
+      store.setPrompt(result.prompt)
+      store.setLyrics(result.lyrics)
+      store.setBPM(result.bpm)
+      store.setDuration(result.duration)
+      store.setKeySignature(result.key)
+      store.setTimeSignature(result.timeSig)
+      store.setGenerationStatus('✅ Audio generation complete!')
+
+      // Parse audio files from result
+      // audioResult[0-7] are the Generated Music Sample components
+      const audioFiles = result.audios.map((audio: any, idx: number) => {
+        if (!audio) return null
         
-        store.setPrompt(caption)
-        store.setLyrics(lyrics)
-        store.setBPM(bpm)
-        store.setDuration(duration)
-        store.setKeySignature(key)
-        store.setTimeSignature(timeSig)
-        store.setGenerationStatus(status)
+        // Gradio FileData format: {path, url, size, orig_name, mime_type}
+        const audioUrl = audio.url || audio.path || (typeof audio === 'string' ? audio : null)
         
-        console.log('✅ Parsed data:', { 
-          caption: caption.substring(0, 50) + '...', 
-          lyrics, 
-          bpm, 
-          duration, 
-          key, 
-          timeSig,
-          status: status.substring(0, 100) + '...'
-        })
-      } else {
-        console.warn('⚠️ Unexpected result format:', result)
-        store.setGenerationStatus('✅ Generation complete (unexpected format)')
-      }
+        if (!audioUrl) return null
+
+        return {
+          url: audioUrl,
+          index: idx,
+          filename: audio.orig_name || `sample_${idx + 1}.mp3`,
+        }
+      }).filter(Boolean)
+
+      console.log('🎧 Parsed audio files:', audioFiles)
+
+      // Add audio files to store
+      audioFiles.forEach((audio: any) => {
+        store.addGeneratedAudio(audio.url, audio.index)
+      })
+
+      console.log('✅ Generation complete with', audioFiles.length, 'audio files')
+      
     } catch (error) {
       console.error('❌ Generation failed:', error)
       setProgressState({
@@ -620,7 +618,7 @@ export function GenerationPanel() {
             <div className="mt-6 space-y-4">
               <h3 className="font-semibold flex items-center gap-2">
                 <Music className="h-4 w-4" />
-                Generated Music
+                Generated Music ({store.generatedAudios.length} samples)
               </h3>
               <div className="grid gap-4">
                 {store.generatedAudios.map((audio, idx) => (
@@ -628,9 +626,11 @@ export function GenerationPanel() {
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium">Sample {audio.index + 1}</span>
-                        <Button variant="outline" size="sm" className="gap-2">
-                          <Download className="h-4 w-4" />
-                          Download
+                        <Button variant="outline" size="sm" className="gap-2" asChild>
+                          <a href={audio.url} download={`sample_${audio.index + 1}.mp3`}>
+                            <Download className="h-4 w-4" />
+                            Download
+                          </a>
                         </Button>
                       </div>
                       <audio controls src={audio.url} className="w-full" />
